@@ -50,6 +50,7 @@ add_library(${PROJECT_NAME}
         src/Admittance.cpp
         src/BaseAdmittance.cpp
         src/BoundedAdmittanceWithK.cpp
+        src/BoundedAdmittanceNoImp.cpp
         )
 add_dependencies(${PROJECT_NAME}
         ${catkin_EXPORTED_TARGETS}
