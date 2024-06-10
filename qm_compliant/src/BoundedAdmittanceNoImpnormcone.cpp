@@ -101,11 +101,11 @@ vector_t BoundedAdmittanceNoImp::getProxyState() {
     return state;
 }
 
-void BoundedAdmittanceNoImp::update(const ocs2::vector_t &rbdStateMeasured, ocs2::scalar_t time, ocs2::scalar_t period) {
+vector_t BoundedAdmittanceNoImp::update(const ocs2::vector_t &rbdStateMeasured, ocs2::scalar_t time, ocs2::scalar_t period) {
     if(!idx_flag_ || !param_flag_ || !tau_flag_)
     {
         ROS_INFO("Need set joint idx of param first!");
-        return;
+        return {};
     }
 
     //获取当前关节实际位置和速度
@@ -138,17 +138,7 @@ void BoundedAdmittanceNoImp::update(const ocs2::vector_t &rbdStateMeasured, ocs2
     T_ = period;
     qs_ = joint_pos;   
 
-    // control law   丁师兄论文公式（3-7） 暂时先不采用法锥 有问题 目前采用纯普通导纳加力矩饱和投影函数处理
-    ax_ = 1 / Mx_ * (-Bx_ * (ux_ - dot_q0_)- Kx_ * (qx_ - q0_) + torque_ext_ ) + ddot_q0_;
-    ux_ = ux_ + T_ * ax_;
-    qx_ = qx_ + T_ * ux_;
-    
-    //用不到PID
-    // a_ = a_ + T_ * (qx_ - joint_pos);
-    // tau_ = M_ * ax_ + K_ * (qx_ - joint_pos) + B_ * (ux_ - joint_vel) + L_ * a_;
-    // vector_t tau(1);
-    // tau << projectionFunction(tau_);
-/*
+    // control law   丁师兄论文公式（3-7）
     scalar_t Khat_ = K_ + B_/T_ + L_*T_;   
     scalar_t Mat1 = 1 + Kx_ * T_ * T_ / (Mx_ + Bx_ * T_);   // S_1
     scalar_t Mat2 = Khat_ + M_ / (T_ * T_);    // S_2
@@ -176,7 +166,7 @@ void BoundedAdmittanceNoImp::update(const ocs2::vector_t &rbdStateMeasured, ocs2
     tau_cmd[0] = tau_pre_;
 
     tau_pre_ = tau_;
-*/
+
     // publish msg
 
     //发布proxy位置
@@ -186,7 +176,7 @@ void BoundedAdmittanceNoImp::update(const ocs2::vector_t &rbdStateMeasured, ocs2
 
     //发布关节力矩极限值
     std_msgs::Float64 f_msg;
-    f_msg.data = -tau_max_;
+    f_msg.data = tau_max_;
     torque_pub_.publish(f_msg);         
 
     // std_msgs::Float64 tau_msg;
@@ -199,7 +189,8 @@ void BoundedAdmittanceNoImp::update(const ocs2::vector_t &rbdStateMeasured, ocs2
     torque_ext_pub_.publish(torque_ext_msg);
 
 
-    //return tau;
+
+    return tau_cmd;
 }
 
 

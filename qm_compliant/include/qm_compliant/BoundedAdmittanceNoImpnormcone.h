@@ -15,7 +15,7 @@ class BoundedAdmittanceNoImp {
 public:
     BoundedAdmittanceNoImp(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
                       const PinocchioEndEffectorKinematics &armEeKinematics, ros::NodeHandle &controller_nh);
-    void update(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period);
+    vector_t update(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period);
     void initParam();
     void setJointIdx(size_t idx);
     void setTorqueMax(scalar_t tau_max);

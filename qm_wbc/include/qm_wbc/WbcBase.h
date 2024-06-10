@@ -16,11 +16,14 @@
 
 #include <dynamic_reconfigure/server.h>
 #include "qm_wbc/WbcWeightConfig.h"
+#include <std_msgs/Float64.h>
 
 namespace qm{
 using namespace ocs2;
 using namespace legged_robot;
-
+using vector6_t = Eigen::Matrix<scalar_t, 6, 1>;
+using vector5_t = Eigen::Matrix<scalar_t, 5, 1>;
+using vector4_t = Eigen::Matrix<scalar_t, 4, 1>;
 // Decision Variables: x = [\dot v^T, F^T]^T
 class WbcBase{
     using vector6_t = Eigen::Matrix<scalar_t, 6, 1>;
@@ -36,11 +39,13 @@ public:
 
     void setReferenceManager(std::shared_ptr<ReferenceManagerInterface> referenceManagerPtr);
     virtual vector_t getImpDesiredTorque() = 0;
+
 protected:
     void updateMeasured(const vector_t& rbdStateMeasured);
     void updateDesired(const vector_t& stateDesired, const vector_t& inputDesired, ocs2::scalar_t period);
     vector_t updateCmd(vector_t x_optimal);
     void setManipulatorTorqueLimit(const vector_t torqueLimit);
+    vector6_t getExternalArmTorque();
 
     vector3_t getEEPosition();
     vector3_t getEEVelocity();
@@ -69,7 +74,16 @@ protected:
     Task formulateTorqueLimitsTaskWithEEForceTask();
     vector_t updateCmdWithEEForce(vector_t x_optimal);
     Task formulateManipulatorTorqueTask(const vector_t& inputDesired);
+    Task ManipulatorTorqueTaskTwoAdmittance(const vector_t& inputDesired);
+    Task ManipulatorTorqueTaskJointOneAdmittance(const vector_t& inputDesired);
+    Task ManipulatorTorqueTaskJointTwoAdmittance(const vector_t& inputDesired);
+
     Task formulateBaseXMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
+
+    Task formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
+    Task formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
+    Task formulateJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot);
+
     Task formulateBaseYMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateXYContactForceTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired);
     Task formulateZContactForceTask(const vector_t &inputDesired);
@@ -80,6 +94,8 @@ protected:
     scalar_t frictionCoeff_{};
     vector_t qDesired_, vDesired_, baseAccDesired_;
     vector_t eeForce_;
+
+    ros::Publisher Joint1MPCdesiredPublisher_, Joint2MPCdesiredPublisher_;
 
     std::shared_ptr<ReferenceManagerInterface> referenceManagerPtr_;
 
@@ -107,6 +123,11 @@ private:
     scalar_t baseHeightKp_{}, baseHeightKd_{};
     scalar_t baseAngularKp_{}, baseAngularKd_{};
     scalar_t baseLinearKp_{}, baseLinearKd_{};
+
+    //纯导纳proxy追踪
+    scalar_t joint1ProxyTrackingKp_{},joint2ProxyTrackingKp_{};
+    scalar_t joint1ProxyTrackingKd_{},joint2ProxyTrackingKd_{};
+
     matrix_t jointKp_, jointKd_;
     matrix_t armEeLinearKp_{}, armEeLinearKd_{};
     matrix_t armEeAngularKp_{}, armEeAngularKd_{};

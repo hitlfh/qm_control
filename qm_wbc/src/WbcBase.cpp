@@ -57,6 +57,11 @@ WbcBase::WbcBase(const ocs2::PinocchioInterface &pinocchioInterface, ocs2::Centr
     armEeAngularKp_ = matrix_t::Zero(3, 3);
     armEeAngularKd_ = matrix_t::Zero(3, 3);
 
+    const std::string robotName = "qm";
+    ros::NodeHandle nh;
+    Joint1MPCdesiredPublisher_ = nh.advertise<std_msgs::Float64>(robotName + "_joint2_desired", 1);
+    Joint2MPCdesiredPublisher_ = nh.advertise<std_msgs::Float64>(robotName + "_joint3_desired", 1);
+    
     ros::NodeHandle nh_weight = ros::NodeHandle(controller_nh, "wbc");
     dynamic_srv_ = std::make_shared<dynamic_reconfigure::Server<qm_wbc::WbcWeightConfig>>(nh_weight);
     dynamic_reconfigure::Server<qm_wbc::WbcWeightConfig>::CallbackType cb = [this](auto&& PH1, auto&& PH2) {
@@ -106,6 +111,12 @@ void WbcBase::dynamicCallback(qm_wbc::WbcWeightConfig &config, uint32_t) {
     baseLinearKp_ = config.kp_base_linear;
     baseLinearKd_ = config.kd_base_linear;
 
+    // arm joint Proxy tracking  
+    joint1ProxyTrackingKp_ = config.kp_joint1_ProxyTracking;
+    joint1ProxyTrackingKd_ = config.kd_joint1_ProxyTracking;
+    joint2ProxyTrackingKp_ = config.kp_joint2_ProxyTracking;
+    joint2ProxyTrackingKd_ = config.kd_joint2_ProxyTracking;
+
     ROS_INFO_STREAM("\033[32m Update the wbc param. \033[0m");
 }
 
@@ -118,9 +129,31 @@ vector_t WbcBase::update(const ocs2::vector_t &stateDesired, const ocs2::vector_
             numContacts_++;
         }
     }
-
     updateMeasured(rbdStateMeasured);
     updateDesired(stateDesired, inputDesired, period);
+
+    // //发布MPC算出来的期望关节角度
+
+    scalar_t q1_d;
+    scalar_t q2_d;
+    if(referenceManagerPtr_ == nullptr){
+        throw std::runtime_error("[CompliantWbc] ReferenceManager pointer cannot be a nullptr!");
+    } else{
+        const auto& targetTrajectories = referenceManagerPtr_->getTargetTrajectories();
+        const auto& timeTrajectory = targetTrajectories.timeTrajectory;
+        const auto& stateTrajectory = targetTrajectories.stateTrajectory;   //维度可以参考src/qm_control/qm_controllers/src/QMController.cpp  119行
+        const size_t size = timeTrajectory.size();
+        q1_d = stateTrajectory[size-1][25];   //MPC算出来的期望的机械臂第2关节角度
+        q2_d = stateTrajectory[size-1][26];   //MPC算出来的期望的机械臂第3关节角度
+    }
+    // std_msgs::Float64 msg;
+    // msg.data = qx_;
+    // qx_pub_.publish(msg);
+    std_msgs::Float64 msg1,msg2;
+    msg1.data = q1_d;
+    msg2.data = q2_d;
+    Joint1MPCdesiredPublisher_.publish(msg1);
+    Joint2MPCdesiredPublisher_.publish(msg2);
 
     return {};
 }
@@ -129,9 +162,9 @@ void WbcBase::updateMeasured(const ocs2::vector_t &rbdStateMeasured) {
     qMeasured_.setZero();
     vMeasured_.setZero();
 
-    qMeasured_.head<3>() = rbdStateMeasured.segment<3>(3);
-    qMeasured_.segment<3>(3) = rbdStateMeasured.head<3>();
-    qMeasured_.tail(info_.actuatedDofNum) = rbdStateMeasured.segment(6, info_.actuatedDofNum);
+    qMeasured_.head<3>() = rbdStateMeasured.segment<3>(3);   //base位置
+    qMeasured_.segment<3>(3) = rbdStateMeasured.head<3>();   //base姿态
+    qMeasured_.tail(info_.actuatedDofNum) = rbdStateMeasured.segment(6, info_.actuatedDofNum);  //joint pos
     vMeasured_.head<3>() = rbdStateMeasured.segment<3>(info_.generalizedCoordinatesNum + 3);
     vMeasured_.segment<3>(3) = getEulerAnglesZyxDerivativesFromGlobalAngularVelocity<scalar_t>(
             qMeasured_.segment<3>(3), rbdStateMeasured.segment<3>(info_.generalizedCoordinatesNum));
@@ -146,7 +179,7 @@ void WbcBase::updateMeasured(const ocs2::vector_t &rbdStateMeasured) {
     pinocchio::updateFramePlacements(model, data);
     pinocchio::crba(model, data, qMeasured_);
 
-    data.M.triangularView<Eigen::StrictlyLower>() = data.M.transpose().triangularView<Eigen::StrictlyLower>();
+    data.M.triangularView<Eigen::StrictlyLower>() = data.M.transpose().triangularView<Eigen::StrictlyLower>();  //确保质量矩阵为对称矩阵
 
     // For floating base EoM task
     pinocchio::nonLinearEffects(model, data, qMeasured_, vMeasured_);
@@ -155,7 +188,7 @@ void WbcBase::updateMeasured(const ocs2::vector_t &rbdStateMeasured) {
         Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac;
         jac.setZero(6, info_.generalizedCoordinatesNum);
         pinocchio::getFrameJacobian(model, data, info_.endEffectorFrameIndices[i], pinocchio::LOCAL_WORLD_ALIGNED, jac);
-        j_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();
+        j_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();     //取jac的线速度部分
     }
 
     // For not contact motion task
@@ -248,7 +281,7 @@ Task WbcBase::formulateBaseAngularMotionTask(){
 
     a.block(0, 0, 3, info_.generalizedCoordinatesNum) = base_j_.block(3, 0, 3, info_.generalizedCoordinatesNum);
 
-    vector3_t eulerAngles = qMeasured_.segment<3>(3);
+    vector3_t eulerAngles = qMeasured_.segment<3>(3);    //取出base的位置欧拉角
 
     // from derivative euler to angular
     vector3_t vMeasuredGlobal =
@@ -480,7 +513,7 @@ Task WbcBase::formulateEeLinearMotionTrackingTask() {
     return {a, b, matrix_t(), vector_t()};
 }
 
-Task WbcBase::formulateEeAngularMotionTrackingTask(){
+Task WbcBase::formulateEeAngularMotionTrackingTask(){    //柔顺分支这里师兄采用了固定期望末端姿态，注释掉的部分是让期望姿态等于MPC算出来的姿态，这就与main分支一样。
     matrix_t a(3, numDecisionVars_);
     vector_t b(a.rows());
     a.setZero();
@@ -500,11 +533,12 @@ Task WbcBase::formulateEeAngularMotionTrackingTask(){
 //    matrix3_t rotationEeReferenceToWorld = Ddata.oMf[armEeFrameIdx_].rotation();
 //    vector3_t armDesiredEeAngularVel = pinocchio::getFrameVelocity(Dmodel, Ddata, armEeFrameIdx_,
 //                                                   pinocchio::LOCAL_WORLD_ALIGNED).angular();
-    vector3_t eularDesired(-1.57, 0, -1.57);
+
+    vector3_t eularDesired(-1.57, 0, -1.57);   // 这里固定期望机械臂末端期望姿态，而main分支里面的这里的期望姿态是通过MPC算出来的
     matrix3_t rotationEeReferenceToWorld =
             getRotationMatrixFromZyxEulerAngles<scalar_t>(eularDesired);
 
-    // error
+    // error  框减运算
     vector3_t error = rotationErrorInWorld<scalar_t>(rotationEeReferenceToWorld, rotationEeMeasuredToWorld);
 
     matrix_t arm_dj_tmp = matrix_t(6, info_.generalizedCoordinatesNum);
@@ -561,7 +595,7 @@ vector_t WbcBase::updateCmd(ocs2::vector_t x_optimal) {
 /******************************************************************************************************/
 
 // EoM
-// [Mb, -J^Tb]x = -hb + Jeb^T * Fe
+// [Mb, -J^Tb]x = -hb + Jeb^T * Fe    见师兄毕业论文（2-7） （5-17）
 Task WbcBase::formulateFloatingBaseEomWithEEForceTask() {
     matrix_t a(6, numDecisionVars_);
     vector_t b(a.rows());
@@ -578,7 +612,7 @@ Task WbcBase::formulateFloatingBaseEomWithEEForceTask() {
     Jeb_T = arm_j_.transpose().topRows(6);
 
     a << Mb, -Jcb_T;
-    b = -hb + Jeb_T * eeForce_;
+    b = -hb + Jeb_T * eeForce_;   //eeForce_只考虑了力没有考虑力矩
 
     return {a, b, matrix_t(), matrix_t()};
 }
@@ -613,7 +647,7 @@ Task WbcBase::formulateTorqueLimitsTaskWithEEForceTask() {
     return {matrix_t(), vector_t(), d, f};
 }
 
-vector_t WbcBase::updateCmdWithEEForce(ocs2::vector_t x_optimal) {
+vector_t WbcBase::updateCmdWithEEForce(ocs2::vector_t x_optimal) {   //对应的是全动力学（小论文里公式（1））的全驱动部分
     auto& data = pinocchioInterfaceMeasured_.getData();
 
     matrix_t Mj, Jj_T, Jje_T;
@@ -633,14 +667,26 @@ vector_t WbcBase::updateCmdWithEEForce(ocs2::vector_t x_optimal) {
     return cmd;
 }
 
-Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired) {
+//得到机械臂末端外力映射到关节空间的外力矩
+
+vector6_t WbcBase::getExternalArmTorque(){
+    matrix_t Jea_T;
+    vector6_t ExtTorque;
+    ExtTorque.setZero();
+    Jea_T = arm_j_.transpose().bottomRows(info_.actuatedDofNum);
+    Jea_T.topRows(12).setZero();
+    ExtTorque = (Jea_T * eeForce_).bottomRows(6);
+    return ExtTorque;
+}
+
+Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
     matrix_t a(6, numDecisionVars_);
     vector_t b(a.rows());
     a.setZero();
     b.setZero();
 
     vector_t tau_d = vector_t(6);
-    tau_d = inputDesired.tail(6);
+    tau_d = inputDesired.tail(6);          //这里的tau_d的二三关节为阻抗 + 导纳，而另外的关节都是纯阻抗。
 
     auto& data = pinocchioInterfaceMeasured_.getData();
 
@@ -651,6 +697,99 @@ Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired)
     Jje_T = arm_j_.transpose().bottomRows(6);
     hj = data.nle.bottomRows(6);
 
+    a.block(0, 0, 6, numDecisionVars_) << Mj, -Jjc_T;
+    b = tau_d - hj + Jje_T * eeForce_;
+
+    return {a, b, matrix_t(), matrix_t()};
+}
+
+//joint2和joint3都是纯导纳，这个任务只考虑其他四个关节的阻抗
+Task WbcBase::ManipulatorTorqueTaskTwoAdmittance(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
+    matrix_t a(6, numDecisionVars_);
+    vector_t b(a.rows());
+    a.setZero();
+    b.setZero();
+
+    vector_t tau_d = vector_t(4);
+    vector6_t tmp;
+    tmp.setZero();
+
+    tmp = inputDesired.tail(6);          
+    tau_d = tmp;
+    tau_d.row(1).setZero();
+    tau_d.row(2).setZero();
+    auto& data = pinocchioInterfaceMeasured_.getData();
+
+    matrix_t Mj, Jjc_T, Jje_T;
+    vector_t hj;
+    Mj = data.M.bottomRows(6);
+    Mj.row(1).setZero();
+    Mj.row(2).setZero();
+    Jjc_T = j_.transpose().bottomRows(6);
+    Jjc_T.row(1).setZero();
+    Jjc_T.row(2).setZero();
+    Jje_T = arm_j_.transpose().bottomRows(6);
+    Jje_T.row(1).setZero();
+    Jje_T.row(2).setZero();
+    hj = data.nle.bottomRows(6);
+    hj.row(1).setZero();
+    hj.row(2).setZero();
+    a.block(0, 0, 6, numDecisionVars_) << Mj, -Jjc_T;
+    b = tau_d - hj + Jje_T * eeForce_;
+
+    return {a, b, matrix_t(), matrix_t()};
+}
+
+//joint2是纯导纳，这个任务只考虑其他五个关节的阻抗
+Task WbcBase::ManipulatorTorqueTaskJointOneAdmittance(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
+    matrix_t a(6, numDecisionVars_);
+    vector_t b(a.rows());
+    a.setZero();
+    b.setZero();
+
+    vector_t tau_d = vector_t(6);
+    tau_d = inputDesired.tail(6);          
+    tau_d.row(1).setZero();
+    auto& data = pinocchioInterfaceMeasured_.getData();
+
+    matrix_t Mj, Jjc_T, Jje_T;
+    vector_t hj;
+    Mj = data.M.bottomRows(6);
+    Mj.row(1).setZero();
+    Jjc_T = j_.transpose().bottomRows(6);
+    Jjc_T.row(1).setZero();
+    Jje_T = arm_j_.transpose().bottomRows(6);
+    Jje_T.row(1).setZero();
+    hj = data.nle.bottomRows(6);
+    hj.row(1).setZero();
+    a.block(0, 0, 6, numDecisionVars_) << Mj, -Jjc_T;
+    b = tau_d - hj + Jje_T * eeForce_;
+
+    return {a, b, matrix_t(), matrix_t()};
+}
+
+//joint3是纯导纳，这个任务只考虑其他五个关节的阻抗
+Task WbcBase::ManipulatorTorqueTaskJointTwoAdmittance(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
+    matrix_t a(6, numDecisionVars_);
+    vector_t b(a.rows());
+    a.setZero();
+    b.setZero();
+
+    vector_t tau_d = vector_t(6);
+    tau_d = inputDesired.tail(6);          
+    tau_d.row(2).setZero();
+    auto& data = pinocchioInterfaceMeasured_.getData();
+
+    matrix_t Mj, Jjc_T, Jje_T;
+    vector_t hj;
+    Mj = data.M.bottomRows(6);
+    Mj.row(2).setZero();
+    Jjc_T = j_.transpose().bottomRows(6);
+    Jjc_T.row(2).setZero();
+    Jje_T = arm_j_.transpose().bottomRows(6);
+    Jje_T.row(2).setZero();
+    hj = data.nle.bottomRows(6);
+    hj.row(2).setZero();
     a.block(0, 0, 6, numDecisionVars_) << Mj, -Jjc_T;
     b = tau_d - hj + Jje_T * eeForce_;
 
@@ -672,7 +811,105 @@ Task WbcBase::formulateBaseXMotionTrackingTask(const ocs2::scalar_t qx, const oc
 
     return {a, b, matrix_t(), vector_t()};
 }
+// joint1ProxyTrackingKp_
+// joint1ProxyTrackingKd_
+// joint2ProxyTrackingKp_
+// joint2ProxyTrackingKd_
 
+//关节2的proxy追踪
+Task WbcBase::formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 19, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_qx + joint1ProxyTrackingKp_ * (qx - qMeasured_[19])
+            + joint1ProxyTrackingKd_ * (dot_qx - vMeasured_[19]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+// Task WbcBase::formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
+//     matrix_t a(1, numDecisionVars_);
+//     vector_t b(a.rows());
+
+//     a.setZero();
+//     b.setZero();
+
+//     a.block(0, 19, 1, 1) = matrix_t::Identity(1, 1);
+
+//     b[0] =  ddot_qx + baseLinearKp_ * (qx - qMeasured_[19])
+//             + baseLinearKd_ * (dot_qx - vMeasured_[19]);
+
+//     return {a, b, matrix_t(), vector_t()};
+// }
+//关节3的proxy追踪
+Task WbcBase::formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 20, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_qx + joint2ProxyTrackingKp_ * (qx - qMeasured_[20])
+            + joint2ProxyTrackingKd_ * (dot_qx - vMeasured_[20]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+// //关节3的proxy追踪
+// Task WbcBase::formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
+//     matrix_t a(1, numDecisionVars_);
+//     vector_t b(a.rows());
+
+//     a.setZero();
+//     b.setZero();
+
+//     a.block(0, 20, 1, 1) = matrix_t::Identity(1, 1);
+
+//     b[0] =  ddot_qx + baseLinearKp_ * (qx - qMeasured_[20])
+//             + baseLinearKd_ * (dot_qx - vMeasured_[20]);
+
+//     return {a, b, matrix_t(), vector_t()};
+// }
+//关节2、3的proxy追踪
+Task WbcBase::formulateJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot){
+    matrix_t a(2, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 19, 2, 2) = matrix_t::Identity(2, 2);
+
+    b[0] =  proxy1_ddot + joint1ProxyTrackingKp_ * (proxy1 - qMeasured_[19])
+            + joint1ProxyTrackingKd_ * (proxy1_dot - vMeasured_[19]);
+    b[1] =  proxy2_ddot + joint2ProxyTrackingKp_ * (proxy2 - qMeasured_[20])
+            + joint2ProxyTrackingKd_ * (proxy2_dot - vMeasured_[20]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+
+// //关节2、3的proxy追踪
+// Task WbcBase::formulateJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot){
+//     matrix_t a(2, numDecisionVars_);
+//     vector_t b(a.rows());
+
+//     a.setZero();
+//     b.setZero();
+
+//     a.block(0, 19, 2, 2) = matrix_t::Identity(2, 2);
+
+//     b[0] =  proxy1_ddot + baseLinearKp_ * (proxy1 - qMeasured_[19])
+//             + baseLinearKd_ * (proxy1_dot - vMeasured_[19]);
+//     b[1] =  proxy2_ddot + baseLinearKp_ * (proxy2 - qMeasured_[20])
+//             + baseLinearKd_ * (proxy2_dot - vMeasured_[20]);
+
+//     return {a, b, matrix_t(), vector_t()};
+// }
 Task WbcBase::formulateBaseYMotionTrackingTask(const ocs2::scalar_t qx, const ocs2::scalar_t dot_qx,
                                                const ocs2::scalar_t ddot_qx) {
     matrix_t a(1, numDecisionVars_);

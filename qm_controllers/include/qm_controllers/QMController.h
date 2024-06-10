@@ -88,6 +88,7 @@ protected:
     std::shared_ptr<QmVisualizer> robotVisualizer_;
     ros::Publisher observationPublisher_, eeStatePublisher_, forceStatePublisher_, impDesiredPublisher_;
 
+
     std::shared_ptr<dynamic_reconfigure::Server<qm_controllers::WeightConfig>> dynamic_srv_{};
     double arm_kp_wbc_{}, arm_kd_wbc_{};
 };
