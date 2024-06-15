@@ -111,6 +111,12 @@ void WbcBase::dynamicCallback(qm_wbc::WbcWeightConfig &config, uint32_t) {
     baseLinearKp_ = config.kp_base_linear;
     baseLinearKd_ = config.kd_base_linear;
 
+    //base addmittance tracking
+    baseXAdmittanceKp_ = config.baseXAdmittanceKp;
+    baseXAdmittanceKd_ = config.baseXAdmittanceKd;
+    baseYAdmittanceKp_ = config.baseYAdmittanceKp;
+    baseYAdmittanceKd_ = config.baseYAdmittanceKd;
+    
     // arm joint Proxy tracking  
     joint1ProxyTrackingKp_ = config.kp_joint1_ProxyTracking;
     joint1ProxyTrackingKd_ = config.kd_joint1_ProxyTracking;
@@ -679,6 +685,17 @@ vector6_t WbcBase::getExternalArmTorque(){
     return ExtTorque;
 }
 
+//得到机械臂末端外力映射到关节空间base的外力矩
+
+vector6_t WbcBase::getExternalBaseTorque(){
+    matrix_t Jeb_T;
+    vector6_t ExtTorque;
+    ExtTorque.setZero();
+    Jeb_T = arm_j_.transpose().topRows(6);
+    ExtTorque = (Jeb_T * eeForce_).bottomRows(6);
+    return ExtTorque;
+}
+
 Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
     matrix_t a(6, numDecisionVars_);
     vector_t b(a.rows());
@@ -808,6 +825,22 @@ Task WbcBase::formulateBaseXMotionTrackingTask(const ocs2::scalar_t qx, const oc
 
     b[0] =  ddot_qx + baseLinearKp_ * (qx - qMeasured_[0])
             + baseLinearKd_ * (dot_qx - vMeasured_[0]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+
+Task WbcBase::formulateBaseXAdmittanceTrackingTask(const ocs2::scalar_t qx, const ocs2::scalar_t dot_qx,
+                                               const ocs2::scalar_t ddot_qx) {
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 0, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_qx + baseXAdmittanceKp_ * (qx - qMeasured_[0])
+            + baseXAdmittanceKd_ * (dot_qx - vMeasured_[0]);
 
     return {a, b, matrix_t(), vector_t()};
 }

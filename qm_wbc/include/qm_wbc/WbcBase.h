@@ -46,6 +46,7 @@ protected:
     vector_t updateCmd(vector_t x_optimal);
     void setManipulatorTorqueLimit(const vector_t torqueLimit);
     vector6_t getExternalArmTorque();
+    vector6_t getExternalBaseTorque();
 
     vector3_t getEEPosition();
     vector3_t getEEVelocity();
@@ -79,7 +80,7 @@ protected:
     Task ManipulatorTorqueTaskJointTwoAdmittance(const vector_t& inputDesired);
 
     Task formulateBaseXMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
-
+    Task formulateBaseXAdmittanceTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot);
@@ -127,6 +128,8 @@ private:
     //纯导纳proxy追踪
     scalar_t joint1ProxyTrackingKp_{},joint2ProxyTrackingKp_{};
     scalar_t joint1ProxyTrackingKd_{},joint2ProxyTrackingKd_{};
+    scalar_t baseXAdmittanceKp_{}, baseXAdmittanceKd_{};
+    scalar_t baseYAdmittanceKp_{}, baseYAdmittanceKd_{};
 
     matrix_t jointKp_, jointKd_;
     matrix_t armEeLinearKp_{}, armEeLinearKd_{};

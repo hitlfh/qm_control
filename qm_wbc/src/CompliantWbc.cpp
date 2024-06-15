@@ -21,6 +21,7 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
     impendace_controller_ = std::make_shared<CartesianImpendance>(pinocchioInterface, info, armEeKinematics, controller_nh);
     BoundedAdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);
     BaseBoundedAdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);
+    BaseAdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);
 
     // dynamic reconfigure
     ros::NodeHandle nh_weight = ros::NodeHandle(controller_nh,"compliant");
@@ -62,6 +63,14 @@ void CompliantWbc::BaseBoundedAdmittanceInit(const ocs2::PinocchioInterface &pin
 //    bounded_admittance_controller_base_y_->setJointIdx(1);
 }
 
+void CompliantWbc::BaseAdmittanceInit(const ocs2::PinocchioInterface &pinocchioInterface, ocs2::CentroidalModelInfo info,
+                                             const ocs2::PinocchioEndEffectorKinematics &armEeKinematics, ros::NodeHandle &controller_nh) {
+    admittance_controller_base_x_ = std::make_shared<BaseBoundedAdmittanceNoImp>(pinocchioInterface, info, armEeKinematics, controller_nh);
+    admittance_controller_base_x_->setJointIdx(0);
+
+//    bounded_admittance_controller_base_y_ = std::make_shared<BoundedAdmittanceWithK>(pinocchioInterface, info, armEeKinematics, controller_nh);
+//    bounded_admittance_controller_base_y_->setJointIdx(1);
+}
 // bounded admittance of joints control law   tau_feedback 应该设成0
 void CompliantWbc::BoundedAdmittanceUpdate(const ocs2::vector_t &rbdStateMeasured, ocs2::scalar_t time,
                                                 ocs2::scalar_t period) {
@@ -152,6 +161,42 @@ vector6_t CompliantWbc::BaseBoundedAdmittanceUpdate(const ocs2::vector_t &rbdSta
     return tau_addmitance;
 }
 
+void CompliantWbc::BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period){
+    vector_t tau_desired(2), tau_addmitance(2), tau_feedback(2), torque_ext(2);
+    tau_feedback.setZero();
+    tau_desired.setZero();
+    tau_addmitance.setZero();
+    torque_ext.setZero();
+    torque_ext = getExternalBaseTorque();
+    // get the desired position from the reference
+    scalar_t base_xd{};
+    if(referenceManagerPtr_ == nullptr){
+        throw std::runtime_error("[CompliantWbc] ReferenceManager pointer cannot be a nullptr!");
+    } else{
+        const auto& targetTrajectories = referenceManagerPtr_->getTargetTrajectories();
+        const auto& timeTrajectory = targetTrajectories.timeTrajectory;
+        const auto& stateTrajectory = targetTrajectories.stateTrajectory;   //维度可以参考src/qm_control/qm_controllers/src/QMController.cpp  119行
+        const size_t size = timeTrajectory.size();
+        base_xd = stateTrajectory[size-1][6];
+    }
+
+    admittance_controller_base_x_->setTorqueMax(1000); // 设置base x 方向的力最大值  =  frictionCoeff_ * force_z
+    admittance_controller_base_x_->setParam(Mbasex_, Kbasex_, Bbasex_, Lbasex_, Mbase_px_, Bbase_px_, Kbase_px_);
+    admittance_controller_base_x_->setDesired(0, 0, base_xd);
+//    bounded_admittance_controller_base_x_->setDesired(baseAccDesired_[0], vDesired_[0], qDesired_[0]);
+    //admittance_controller_base_x_->setForceDesired(tau_desired[0]);
+    admittance_controller_base_x_->setForceFeedback(0);     //base部分没有力传感器，所以直接把base的力反馈设置成0
+    admittance_controller_base_x_->setTorqueExternal(torque_ext[0]);
+    admittance_controller_base_x_->update(rbdStateMeasured, time, period);
+//    bounded_admittance_controller_base_y_->setTorqueMax(force_z * mu_); // mpc force z * mu
+//    bounded_admittance_controller_base_y_->setParam(Mbasex_, Kbasex_, Bbasex_, Lbasex_, Mbase_px_, Bbase_px_, Kbase_px_);
+//    bounded_admittance_controller_base_y_->setDesired(0, 0, base_y_);
+//    bounded_admittance_controller_base_y_->setForceDesired(tau_desired[1]);
+//    bounded_admittance_controller_base_y_->setForceFeedback(0);
+//    tmp = bounded_admittance_controller_base_y_->update(rbdStateMeasured, time, period);
+//    tau_addmitance[1] = tmp[1];
+
+}
 /*  师兄论文方案
 // bounded admittance control law
 vector_t CompliantWbc::BoundanceAdmittanceControl(const ocs2::vector_t &stateDesired, const ocs2::vector_t &inputDesired,
@@ -244,8 +289,8 @@ vector_t CompliantWbc::BoundanceAdmittanceControl(const ocs2::vector_t &stateDes
         force_z += inputDesired[3*i+2];
     }
     vector_t tau_cmd = BaseBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp, force_z);
-    vector_t proxy_x = bounded_admittance_controller_base_x_->getProxyState();
-
+    //vector_t proxy_x = bounded_admittance_controller_base_x_->getProxyState();
+    vector_t proxy_x = admittance_controller_base_x_->getProxyState();
     // constraint
     Task task0 = formulateFloatingBaseEomWithEEForceTask() + formulateTorqueLimitsTaskWithEEForceTask()
                  + formulateNoContactMotionTask() + formulateFrictionConeTask();
@@ -280,16 +325,16 @@ vector_t CompliantWbc::BoundanceAdmittanceControl(const ocs2::vector_t &stateDes
     }
 
     // base compliance 
-    Task taskBaseProxy = formulateBaseXMotionTrackingTask(proxy_x[0], proxy_x[1], proxy_x[2]);  //proxy_x[0] [1] [2]分别代表proxy的位置 速度 加速度
+    Task taskBaseProxy = formulateBaseXAdmittanceTrackingTask(proxy_x[0], proxy_x[1], proxy_x[2]);  //proxy_x[0] [1] [2]分别代表proxy的位置 速度 加速度
 
 
 
     Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100
                  + formulateEeAngularMotionTrackingTask() + taskBA + taskBaseProxy + formulateBaseYLinearMotionTask();
 
-//    Task task3 = formulateContactForceTask(inputDesired);
-    Task task3 = formulateZContactForceTask(inputDesired) + formulateYContactForceTask(inputDesired)
-            + formulateXContactForceTaskWithCompliant(inputDesired, tau_cmd);     //这里的tau_cmd是阻抗+导纳算出来的base的x方向的合力
+   Task task3 = formulateContactForceTask(inputDesired);
+    // Task task3 = formulateZContactForceTask(inputDesired) + formulateYContactForceTask(inputDesired)
+    //         + formulateXContactForceTaskWithCompliant(inputDesired, tau_cmd);     //这里的tau_cmd是阻抗+导纳算出来的base的x方向的合力
 
     HoQp hoQp(task3, std::make_shared<HoQp>(task1, std::make_shared<HoQp>(task0)));
     vector_t x_optimal = hoQp.getSolutions();

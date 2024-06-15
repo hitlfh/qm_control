@@ -11,6 +11,7 @@
 #include <qm_compliant/BoundedAdmittanceWithK.h>
 #include <qm_compliant/CartesianImpendance.h>
 #include <qm_compliant/BoundedAdmittanceNoImp.h>
+#include <qm_compliant/BaseBoundedAdmittanceNoImp.h>
 #include <ocs2_oc/synchronized_module/ReferenceManagerInterface.h>
 
 #include <dynamic_reconfigure/server.h>
@@ -36,7 +37,10 @@ private:
                                const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);
     void BaseBoundedAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                                    const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);
+    void BaseAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);                                 
     void BoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
+    void BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     vector6_t BaseBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,
                                           vector_t imp, scalar_t force_z);
     vector_t BoundanceAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
@@ -50,6 +54,7 @@ private:
     // std::shared_ptr<BoundedAdmittance> bounded_admittance_controller2_;
     // std::shared_ptr<BoundedAdmittance> bounded_admittance_controller1_;
     std::shared_ptr<BoundedAdmittanceWithK> bounded_admittance_controller_base_x_;
+    std::shared_ptr<BaseBoundedAdmittanceNoImp> admittance_controller_base_x_;
 
     // param
     std::shared_ptr<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>> dynamic_srv_{};
