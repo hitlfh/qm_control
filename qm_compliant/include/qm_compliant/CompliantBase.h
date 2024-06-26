@@ -14,6 +14,9 @@
 using vector3_t = Eigen::Matrix<ocs2::scalar_t, 3, 1>;
 using vector6_t = Eigen::Matrix<ocs2::scalar_t, 6, 1>;
 using matrix3_t = Eigen::Matrix<ocs2::scalar_t, 3, 3>;
+using matrix2_t = Eigen::Matrix<ocs2::scalar_t, 2, 2>;
+using vector2_t = Eigen::Matrix<ocs2::scalar_t, 2, 1>;
+
 
 namespace qm{
 using namespace ocs2;

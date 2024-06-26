@@ -696,6 +696,31 @@ vector6_t WbcBase::getExternalBaseTorque(){
     return ExtTorque;
 }
 
+//得到多维离散化需要的逆动力学的惯性项  只考虑机械臂的第2、3关节
+matrix2_t WbcBase::getInertiaTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    matrix_t M, M_arm23, M_arm;
+    M = data.M;
+    M_arm = M.bottomRightCorner(6, 6); 
+    M_arm23 = M_arm.block<2, 2>(1, 1); // 提取 M_a 的第2、3维度的子方阵
+    Eigen::Vector2d diagonal_elements = M_arm23.diagonal();
+
+    Eigen::Matrix2d diagMatrix;
+    diagMatrix.setZero();  // 先置零
+    diagMatrix.diagonal() << diagonal_elements[0],diagonal_elements[1];  // 设置对角线元素
+    return diagMatrix;
+}
+//得到多维离散化需要的逆动力学的非线性项 只考虑机械臂的第2、3关节
+vector2_t WbcBase::getNonlinearTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    vector2_t n, n_arm23,n_arm ;
+    n = data.nle;
+    n_arm = n.bottomRows(6);
+    n_arm23 = n_arm.block(1, 0, 2, 1);
+
+    return n_arm23;
+}
+
 Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
     matrix_t a(6, numDecisionVars_);
     vector_t b(a.rows());

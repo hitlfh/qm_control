@@ -12,6 +12,7 @@
 #include <qm_compliant/CartesianImpendance.h>
 #include <qm_compliant/BoundedAdmittanceNoImp.h>
 #include <qm_compliant/BaseBoundedAdmittanceNoImp.h>
+#include <qm_compliant/BoundedAdmittanceMultiDim.h>
 #include <ocs2_oc/synchronized_module/ReferenceManagerInterface.h>
 
 #include <dynamic_reconfigure/server.h>
@@ -33,32 +34,39 @@ public:
 private:
     void dynamicCallback(qm_wbc::CompliantConfig& config, uint32_t /*level*/);
 
-    void BoundedAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+    void AdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                                const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);
+    void MultiBoundedAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                            const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);  // 多维离散化
     void BaseBoundedAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                                    const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);
     void BaseAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                                    const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);                                 
-    void BoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
+    void AdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     void BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     vector6_t BaseBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,
                                           vector_t imp, scalar_t force_z);
-    vector_t BoundanceAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
+    vector2_t MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp);   // 多维离散化
+    vector_t AdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
                                size_t mode, scalar_t period, scalar_t time);
+    vector_t MultiBoundedAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
+                               size_t mode, scalar_t period, scalar_t time);   // 多维离散化
 
     // impendance controller
     std::shared_ptr<CartesianImpendance> impendace_controller_;
-    // bounded admittance
-    std::shared_ptr<BoundedAdmittanceNoImp> bounded_admittance_controller2_;
-    std::shared_ptr<BoundedAdmittanceNoImp> bounded_admittance_controller1_;
+    //  pure admittance controller
+    std::shared_ptr<BoundedAdmittanceNoImp> admittance_controller2_;
+    std::shared_ptr<BoundedAdmittanceNoImp> admittance_controller1_;
     // std::shared_ptr<BoundedAdmittance> bounded_admittance_controller2_;
-    // std::shared_ptr<BoundedAdmittance> bounded_admittance_controller1_;
+    // std::shared_ptr<BoundedAdmittance> admittance_controller1_;
     std::shared_ptr<BoundedAdmittanceWithK> bounded_admittance_controller_base_x_;
     std::shared_ptr<BaseBoundedAdmittanceNoImp> admittance_controller_base_x_;
+    //  Multi_bounded admittance controller
+    std::shared_ptr<BoundedAdmittanceMultiDim> bounded_admittance_controller_;   // 多维离散化
 
-    // param
     std::shared_ptr<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>> dynamic_srv_{};
 
+    // pure admittance param
     vector6_t tau_max_;
     vector_t imp_desired_;
 
@@ -72,14 +80,21 @@ private:
     scalar_t D1_, L1_, K1_, M1_; // joint2 controller
     scalar_t D2_, L2_, K2_, M2_; // joint3 controller
 
-    size_t begin_{}, end_{};  //切换导纳控制器使能关节
-    // scalar_t Mbx_, Bbx_; // proxy
-    // scalar_t Bb2_, Lb2_, Kb2_, Mb2_; // controller
-    // scalar_t Bb1_, Lb1_, Kb1_, Mb1_; // controller
+    // multi bounded admittance param
+    scalar_t MultiBA_M1x_, MultiBA_D1x_, MultiBA_K1x_; // joint2 proxy
+    scalar_t MultiBA_M2x_, MultiBA_D2x_, MultiBA_K2x_; // joint3 proxy
+    scalar_t SM_lambda;  // 滑模变量 lambda
+    scalar_t SM_K1;  // 滑模变量k1
 
-    //发布tau_cmd
-    ros::Publisher tau_cmd1_pub,tau_cmd2_pub;
+    //纯导纳发布tau_cmd
+    ros::Publisher Admittance_tau_cmd1_pub,Admittance_tau_cmd2_pub;
+    //多维bounded admittance 发布tau_cmd
+    ros::Publisher Multi_BA_tau_cmd1_pub, Multi_BA_tau_cmd2_pub;
+    // bounded admittance param
     scalar_t mu_{};
+    size_t begin_{}, end_{};  //切换导纳控制器使能关节
+    //柔顺控制模式切换标志位
+    size_t controller_mode_;  // 1:pure admittance 2:torque_bounded admittance(老师离散化算法)
 };
 }
 

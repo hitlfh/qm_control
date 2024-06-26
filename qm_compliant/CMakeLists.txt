@@ -52,6 +52,7 @@ add_library(${PROJECT_NAME}
         src/BoundedAdmittanceWithK.cpp
         src/BoundedAdmittanceNoImp.cpp
         src/BaseBoundedAdmittanceNoImp.cpp
+        src/BoundedAdmittanceMultiDim.cpp
         )
 add_dependencies(${PROJECT_NAME}
         ${catkin_EXPORTED_TARGETS}

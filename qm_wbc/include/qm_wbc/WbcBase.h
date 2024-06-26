@@ -24,6 +24,7 @@ using namespace legged_robot;
 using vector6_t = Eigen::Matrix<scalar_t, 6, 1>;
 using vector5_t = Eigen::Matrix<scalar_t, 5, 1>;
 using vector4_t = Eigen::Matrix<scalar_t, 4, 1>;
+using vector2_t = Eigen::Matrix<scalar_t, 2, 1>;
 // Decision Variables: x = [\dot v^T, F^T]^T
 class WbcBase{
     using vector6_t = Eigen::Matrix<scalar_t, 6, 1>;
@@ -45,8 +46,12 @@ protected:
     void updateDesired(const vector_t& stateDesired, const vector_t& inputDesired, ocs2::scalar_t period);
     vector_t updateCmd(vector_t x_optimal);
     void setManipulatorTorqueLimit(const vector_t torqueLimit);
+
     vector6_t getExternalArmTorque();
     vector6_t getExternalBaseTorque();
+
+    matrix2_t getInertiaTerm();
+    vector2_t getNonlinearTerm();
 
     vector3_t getEEPosition();
     vector3_t getEEVelocity();
