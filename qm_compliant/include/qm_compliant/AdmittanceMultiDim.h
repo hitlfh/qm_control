@@ -1,18 +1,18 @@
 //
-// Created by hitlfh on 2024/6/24.
+// Created by hitlfh on 2024/7/18.
 //
 
-#ifndef SRC_BOUNDEDADMITTANCEMULTIDIM_H
-#define SRC_BOUNDEDADMITTANCEMULTIDIM_H
+#ifndef SRC_ADMITTANCEMULTIDIM_H
+#define SRC_ADMITTANCEMULTIDIM_H
 
 #include "qm_compliant/CompliantBase.h"
 #include <std_msgs/Float64.h>
 namespace qm{
 using namespace ocs2;
 
-class BoundedAdmittanceMultiDim : public CompliantBase {
+class AdmittanceMultiDim : public CompliantBase {
 public:
-    BoundedAdmittanceMultiDim(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
+    AdmittanceMultiDim(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
                       const PinocchioEndEffectorKinematics &armEeKinematics, ros::NodeHandle &controller_nh);
     vector_t update(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period);
     void initParam();
@@ -22,7 +22,6 @@ public:
     void setMatrixSlidingModeParam(matrix2_t SM_Lambda, matrix2_t SM_K_1);
     void setPDParam(matrix2_t K_p, matrix2_t K_d);
     void setIDControllerParam(matrix2_t M_a,  matrix2_t C_a, vector2_t G_a);  // 设置逆动力学控制器项
-    void setPIDControllerParam(matrix2_t M, matrix2_t K, matrix2_t B, matrix2_t L);
     void setDesired(vector2_t ddot_q0_, vector2_t dot_q0_, vector2_t q0_);
     void setTorqueDesired(vector2_t torque) { torque_desired = torque; };
     void setTorqueExternal(vector2_t torque) { tau_ext = torque;};
@@ -44,10 +43,8 @@ private:
     scalar_t lambda, k_1; // 标量形式滑模项参数
     Eigen::Matrix2d Lambda, K_1; // 矩阵形式滑模项参数
     Eigen::Matrix2d Mx, Dx, Kx, M, B, B_hat, Khat, K, C, Mat_1, Mat_2, Kp_, Kd_;  // M为当前惯性项
-    Eigen::Matrix2d M_pid, K_pid, B_pid, L_pid;  // PID控制器参数
-    Eigen::Vector2d a, a_pre;
     Eigen::Vector2d q0, dot_q0, ddot_q0;  // 期望状态
-    Eigen::Vector2d qx, qx_pre, q, q_pre, ax;
+    Eigen::Vector2d qx, qx_pre, q, q_pre, ax, ddot_qr, dot_qr, S;
     Eigen::Vector2d ux, ux_pre;
     Eigen::Vector2d tau, tau_star, tau_max;
     Eigen::Vector2d phi_a, phi_b;
@@ -72,4 +69,4 @@ private:
 
 
 
-#endif //SRC_BOUNDEDADMITTANCEMULTIDIM_H
+#endif //SRC_ADMITTANCEMULTIDIM_H

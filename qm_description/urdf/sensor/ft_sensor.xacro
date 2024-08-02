@@ -8,12 +8,12 @@
             </geometry>
             <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
         </visual>
-        <collision>
+        <!-- <collision>
             <geometry>
                 <cylinder radius="0.0375" length="0.01"/>
             </geometry>
             <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
-        </collision>
+        </collision> -->
         <!-- <inertial>
             <mass value="0.0001"/>
             <inertia ixx="3.5989583333333335E-8"
@@ -25,6 +25,26 @@
         </inertial> -->
 
         <inertial>
+            <mass value="0.00001"/>
+            <inertia ixx="3.5989583333333335E-9"
+                     ixy="0.0"
+                     ixz="0.0"
+                     iyy="3.5156250000041194E-9"
+                     iyz="0.0"
+                     izz="7.03125E-9"/>
+        </inertial>
+
+        <!-- <inertial>
+            <mass value="1.0E-7"/> 
+            <inertia ixx="3.6E-10" 
+                    ixy="0.0"
+                    ixz="0.0"
+                    iyy="3.5E-10" 
+                    iyz="0.0"
+                    izz="7.0E-10"/> 
+        </inertia>      -->
+
+        <!-- <inertial>
             <mass value="0.01"/>
             <inertia ixx="7.1441E-05"
                      ixy="1.6499E-08"
@@ -32,7 +52,7 @@
                      iyy="7.146E-05"
                      iyz="-8.5336E-09"
                      izz="0.00013366"/>
-        </inertial>
+        </inertial> -->
     </link>
 
     <joint name="ft_sensor_joint" type="revolute">

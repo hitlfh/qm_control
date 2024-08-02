@@ -33,13 +33,13 @@ int main(int argc, char** argv) {
     ros::NodeHandle n;
 
     std::string body_name = "qm::ft_sensor";  // Replace with your sensor link name
-    double max_force = 55.0;  // Maximum force magnitude in Newtons
-    double min_force = -35.0; // Minimum force magnitude in Newtons
+    double max_force = 30.0;  // Maximum force magnitude in Newtons
+    double min_force = -30.0; // Minimum force magnitude in Newtons
     double force_step = 5;  // Step size for each iteration
     double current_force = min_force;
     bool increasing = true;
 
-    ros::Rate rate(10);  // 10 Hz update rate
+    ros::Rate rate(2);  // 2 Hz update rate
 
     while (ros::ok()) {
         applyForceInXDirection(body_name, current_force);

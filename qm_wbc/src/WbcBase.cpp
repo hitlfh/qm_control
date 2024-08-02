@@ -123,6 +123,14 @@ void WbcBase::dynamicCallback(qm_wbc::WbcWeightConfig &config, uint32_t) {
     joint2ProxyTrackingKp_ = config.kp_joint2_ProxyTracking;
     joint2ProxyTrackingKd_ = config.kd_joint2_ProxyTracking;
 
+    // multi arm joint proxy tracking
+    //     scalar_t Multi_joint1ProxyTrackingKp_{},Multi_joint2ProxyTrackingKp_{};
+    // scalar_t Multi_joint1ProxyTrackingKd_{},Multi_joint2ProxyTrackingKd_{};
+    Multi_joint1ProxyTrackingKp_ = config.kp_joint1_MultiProxyTracking;
+    Multi_joint1ProxyTrackingKd_ = config.kd_joint1_MultiProxyTracking;
+    Multi_joint2ProxyTrackingKp_ = config.kp_joint2_MultiProxyTracking;
+    Multi_joint2ProxyTrackingKd_ = config.kd_joint2_MultiProxyTracking;
+    
     ROS_INFO_STREAM("\033[32m Update the wbc param. \033[0m");
 }
 
@@ -184,6 +192,7 @@ void WbcBase::updateMeasured(const ocs2::vector_t &rbdStateMeasured) {
     pinocchio::computeJointJacobians(model, data);
     pinocchio::updateFramePlacements(model, data);
     pinocchio::crba(model, data, qMeasured_);
+    pinocchio::computeGeneralizedGravity(model, data, qMeasured_);
 
     data.M.triangularView<Eigen::StrictlyLower>() = data.M.transpose().triangularView<Eigen::StrictlyLower>();  //确保质量矩阵为对称矩阵
 
@@ -708,17 +717,49 @@ matrix2_t WbcBase::getInertiaTerm(){
     Eigen::Matrix2d diagMatrix;
     diagMatrix.setZero();  // 先置零
     diagMatrix.diagonal() << diagonal_elements[0],diagonal_elements[1];  // 设置对角线元素
-    return diagMatrix;
+    //return diagMatrix;
+    return M_arm23;
 }
-//得到多维离散化需要的逆动力学的非线性项 只考虑机械臂的第2、3关节
-vector2_t WbcBase::getNonlinearTerm(){
+//得到多维离散化需要的逆动力学的科氏力矩阵  只考虑机械臂的第2、3关节
+matrix2_t WbcBase::getCoriolisTerm(){
     auto& data = pinocchioInterfaceMeasured_.getData();
-    vector2_t n, n_arm23,n_arm ;
-    n = data.nle;
-    n_arm = n.bottomRows(6);
-    n_arm23 = n_arm.block(1, 0, 2, 1);
+    matrix_t C, C_arm23, C_arm;
+    C = data.C;
+    C_arm = C.bottomRightCorner(6, 6); 
+    C_arm23 = C_arm.block<2, 2>(1, 1); // 提取 M_a 的第2、3维度的子方阵
+    Eigen::Vector2d diagonal_elements = C_arm23.diagonal();
 
-    return n_arm23;
+    Eigen::Matrix2d diagMatrix;
+    diagMatrix.setZero();  // 先置零
+    diagMatrix.diagonal() << diagonal_elements[0],diagonal_elements[1];  // 设置对角线元素
+    //return diagMatrix;
+    return C_arm23;
+}
+
+//得到多维离散化需要的逆动力学的非线性项 只考虑机械臂的第2、3关节
+vector6_t WbcBase::getNonlinearTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    vector_t n;
+    vector2_t n_arm23;
+    vector6_t n_arm ;
+    n = data.nle; 
+    n_arm = n.bottomRows(6);
+    //n_arm23 = n_arm.block(1, 0, 2, 1);
+
+    return n_arm;
+}
+
+//得到多维离散化需要的逆动力学的重力项 只考虑机械臂的第2、3关节
+vector6_t WbcBase::getGravityTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    vector_t g;
+    vector2_t g_arm23;
+    vector6_t g_arm ;
+    g = data.g; 
+    g_arm = g.tail(6);
+    //g_arm23 = g_arm.segment<2>(1);;
+
+    return g_arm;
 }
 
 Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
@@ -728,7 +769,7 @@ Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired)
     b.setZero();
 
     vector_t tau_d = vector_t(6);
-    tau_d = inputDesired.tail(6);          //这里的tau_d的二三关节为阻抗 + 导纳，而另外的关节都是纯阻抗。
+    tau_d = inputDesired.tail(6);          
 
     auto& data = pinocchioInterfaceMeasured_.getData();
 
@@ -889,6 +930,114 @@ Task WbcBase::formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t
 
     return {a, b, matrix_t(), vector_t()};
 }
+
+//关节2固定（便于调试）
+Task WbcBase::formulateJoint1SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 19, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_q0 + joint1ProxyTrackingKp_ * (q0 - qMeasured_[19])
+            + joint1ProxyTrackingKd_ * (dot_q0 - vMeasured_[19]);
+
+    return {a, b, matrix_t(), vector_t()};  
+}
+//关节3固定（便于调试）
+Task WbcBase::formulateJoint2SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 20, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_q0 + joint2ProxyTrackingKp_ * (q0 - qMeasured_[20])
+            + joint2ProxyTrackingKd_ * (dot_q0 - vMeasured_[20]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+//剩余四个关节固定（便于调式）
+//关节0固定（便于调试）
+Task WbcBase::formulateJoint0SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 18, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_q0 + joint1ProxyTrackingKp_ * (q0 - qMeasured_[18])
+            + joint1ProxyTrackingKd_ * (dot_q0 - vMeasured_[18]);
+
+    return {a, b, matrix_t(), vector_t()};  
+}
+//关节3固定（便于调试）
+Task WbcBase::formulateJoint3SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 21, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_q0 + joint1ProxyTrackingKp_ * (q0 - qMeasured_[21])
+            + joint1ProxyTrackingKd_ * (dot_q0 - vMeasured_[21]);
+
+    return {a, b, matrix_t(), vector_t()};  
+}
+//关节4固定（便于调试）
+Task WbcBase::formulateJoint4SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 22, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_q0 + joint1ProxyTrackingKp_ * (q0 - qMeasured_[22])
+            + joint1ProxyTrackingKd_ * (dot_q0 - vMeasured_[22]);
+
+    return {a, b, matrix_t(), vector_t()};  
+}
+//关节5固定（便于调试）
+Task WbcBase::formulateJoint5SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 23, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_q0 + joint1ProxyTrackingKp_ * (q0 - qMeasured_[23])
+            + joint1ProxyTrackingKd_ * (dot_q0 - vMeasured_[23]);
+
+    return {a, b, matrix_t(), vector_t()};  
+}
+
+//多维饱和关节2的proxy追踪
+Task WbcBase::formulateMulitJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 19, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_qx + Multi_joint1ProxyTrackingKp_ * (qx - qMeasured_[19])
+            + Multi_joint1ProxyTrackingKd_ * (dot_qx - vMeasured_[19]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
 // Task WbcBase::formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
 //     matrix_t a(1, numDecisionVars_);
 //     vector_t b(a.rows());
@@ -915,6 +1064,22 @@ Task WbcBase::formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t
 
     b[0] =  ddot_qx + joint2ProxyTrackingKp_ * (qx - qMeasured_[20])
             + joint2ProxyTrackingKd_ * (dot_qx - vMeasured_[20]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+
+//多维饱和关节3的proxy追踪
+Task WbcBase::formulateMultiJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx){
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 20, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_qx + Multi_joint2ProxyTrackingKp_ * (qx - qMeasured_[20])
+            + Multi_joint2ProxyTrackingKd_ * (dot_qx - vMeasured_[20]);
 
     return {a, b, matrix_t(), vector_t()};
 }
@@ -947,6 +1112,24 @@ Task WbcBase::formulateJoint12ProxyTrackingTask(const scalar_t proxy1,const scal
             + joint1ProxyTrackingKd_ * (proxy1_dot - vMeasured_[19]);
     b[1] =  proxy2_ddot + joint2ProxyTrackingKp_ * (proxy2 - qMeasured_[20])
             + joint2ProxyTrackingKd_ * (proxy2_dot - vMeasured_[20]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+
+//多维饱和关节2、3的proxy追踪
+Task WbcBase::formulateMultiJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot){
+    matrix_t a(2, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 19, 2, 2) = matrix_t::Identity(2, 2);
+
+    b[0] =  proxy1_ddot + Multi_joint1ProxyTrackingKp_ * (proxy1 - qMeasured_[19])
+            + Multi_joint1ProxyTrackingKd_ * (proxy1_dot - vMeasured_[19]);
+    b[1] =  proxy2_ddot + Multi_joint2ProxyTrackingKp_ * (proxy2 - qMeasured_[20])
+            + Multi_joint2ProxyTrackingKd_ * (proxy2_dot - vMeasured_[20]);
 
     return {a, b, matrix_t(), vector_t()};
 }

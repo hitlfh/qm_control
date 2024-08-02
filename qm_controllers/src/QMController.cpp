@@ -195,12 +195,12 @@ void QMController::update(const ros::Time &time, const ros::Duration &period) {
 
 void QMController::updateControlLaw(const vector_t &posDes, const vector_t &velDes, const vector_t &torque) {
     //  Dog control  通过注释掉下面这五行可以让狗趴着只让机械臂动来调试。
-    if(currentObservation_.time > 10)
-    {
-        for (size_t j = 0; j < 12; ++j) {
-            hybridJointHandles_[j].setCommand(posDes(j), velDes(j), 0, 3, torque(j));
-        }
-    }
+    // if(currentObservation_.time > 10)
+    // {
+    //     for (size_t j = 0; j < 12; ++j) {
+    //         hybridJointHandles_[j].setCommand(posDes(j), velDes(j), 0, 3, torque(j));
+    //     }
+    // }
 
     // Arm torque
     for (size_t j = 12; j < 18; ++j) { // 12, 18

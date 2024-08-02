@@ -53,6 +53,8 @@ add_library(${PROJECT_NAME}
         src/BoundedAdmittanceNoImp.cpp
         src/BaseBoundedAdmittanceNoImp.cpp
         src/BoundedAdmittanceMultiDim.cpp
+        src/AdmittanceMultiDim.cpp
+        src/BaseBAMultiDim.cpp
         )
 add_dependencies(${PROJECT_NAME}
         ${catkin_EXPORTED_TARGETS}

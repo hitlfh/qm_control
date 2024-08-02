@@ -1,18 +1,18 @@
 //
-// Created by hitlfh on 2024/6/24.
+// Created by hitlfh on 2024/8/1.
 //
 
-#ifndef SRC_BOUNDEDADMITTANCEMULTIDIM_H
-#define SRC_BOUNDEDADMITTANCEMULTIDIM_H
+#ifndef SRC_BASEBAMULTIDIM_H
+#define SRC_BASEBAMULTIDIM_H
 
 #include "qm_compliant/CompliantBase.h"
 #include <std_msgs/Float64.h>
 namespace qm{
 using namespace ocs2;
 
-class BoundedAdmittanceMultiDim : public CompliantBase {
+class BaseBAMultiDim : public CompliantBase {
 public:
-    BoundedAdmittanceMultiDim(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
+    BaseBAMultiDim(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
                       const PinocchioEndEffectorKinematics &armEeKinematics, ros::NodeHandle &controller_nh);
     vector_t update(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period);
     void initParam();
@@ -69,7 +69,4 @@ private:
 
 }
 
-
-
-
-#endif //SRC_BOUNDEDADMITTANCEMULTIDIM_H
+#endif //SRC_BASEBAMULTIDIM_H

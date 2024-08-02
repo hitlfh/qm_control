@@ -51,7 +51,9 @@ protected:
     vector6_t getExternalBaseTorque();
 
     matrix2_t getInertiaTerm();
-    vector2_t getNonlinearTerm();
+    matrix2_t getCoriolisTerm();
+    vector6_t getNonlinearTerm();
+    vector6_t getGravityTerm();
 
     vector3_t getEEPosition();
     vector3_t getEEVelocity();
@@ -89,6 +91,18 @@ protected:
     Task formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot);
+    Task formulateJoint1SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0);
+    Task formulateJoint2SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0);
+
+    Task formulateJoint0SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0);
+    Task formulateJoint3SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0);
+    Task formulateJoint4SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0);
+    Task formulateJoint5SetPostitionTask(const scalar_t q0, const scalar_t dot_q0, const scalar_t ddot_q0);
+    // 多维饱和proxy跟踪任务
+    Task formulateMulitJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
+    Task formulateMultiJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
+    Task formulateMultiJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot);
+
 
     Task formulateBaseYMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateXYContactForceTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired);
@@ -135,6 +149,10 @@ private:
     scalar_t joint1ProxyTrackingKd_{},joint2ProxyTrackingKd_{};
     scalar_t baseXAdmittanceKp_{}, baseXAdmittanceKd_{};
     scalar_t baseYAdmittanceKp_{}, baseYAdmittanceKd_{};
+
+    //多维饱和导纳proxy 追踪
+    scalar_t Multi_joint1ProxyTrackingKp_{},Multi_joint2ProxyTrackingKp_{};
+    scalar_t Multi_joint1ProxyTrackingKd_{},Multi_joint2ProxyTrackingKd_{};
 
     matrix_t jointKp_, jointKd_;
     matrix_t armEeLinearKp_{}, armEeLinearKd_{};
