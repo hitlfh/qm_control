@@ -122,7 +122,7 @@ vector2_t BaseBAMultiDim::projectionFunction(const vector2_t& tau) {
     //multi
 }
 
-vector_t BaseBAMultiDim::getJoint1ProxyState() {
+vector_t BaseBAMultiDim::getBaseXProxyState() {
     vector_t state(3); // qx, qx_dot, qx_ddot
 
     state(0) = qx[0];
@@ -131,7 +131,7 @@ vector_t BaseBAMultiDim::getJoint1ProxyState() {
     return state;
 }
 
-vector_t BaseBAMultiDim::getJoint2ProxyState() {
+vector_t BaseBAMultiDim::getBaseYProxyState() {
     vector_t state(3); // qx, qx_dot, qx_ddot
 
     state(0) = qx[1];
@@ -157,20 +157,20 @@ vector_t BaseBAMultiDim::update(const ocs2::vector_t &rbdStateMeasured, ocs2::sc
         
         //发布各类话题
         qx1_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/proxy_x" , 1);
-        torque1_limit_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_limit1" , 1);
+        torque1_limit_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_limitx" , 1);
         tau1_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/tau_cmd_x", 1);
-        torque1_ext_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_ext1", 1);
+        torque1_ext_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_extx", 1);
 
         qx2_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/proxy_y" , 1);
-        torque2_limit_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_limit2" , 1);
+        torque2_limit_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_limity" , 1);
         tau2_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/tau_cmd_y", 1);
-        torque2_ext_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_ext2", 1);
+        torque2_ext_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/torque_exty", 1);
 
         tau_star1_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/tau_star_x", 1);
         tau_star2_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/tau_star_y", 1);
 
-        Multi_gravity1_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/gravity_1", 1);
-        Multi_gravity2_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/gravity_2", 1);
+        Multi_gravity1_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/gravity_x", 1);
+        Multi_gravity2_pub_ = nh.advertise<std_msgs::Float64>("/BaseBAMultiDim/gravity_y", 1);
 
 
         qx = base_xy_pos;
@@ -206,7 +206,7 @@ vector_t BaseBAMultiDim::update(const ocs2::vector_t &rbdStateMeasured, ocs2::sc
     // K =  Kp_;
     // Khat = B_hat / T_  + K;
 
-    //第一版PDF推导
+    // //第一版PDF推导
     // Mat_1 = matrix2_t::Identity() + (Mx + Dx * T_).inverse() * Kx * (T_ * T_);
     // Mat_2 = M / (T_ * T_) + Khat ;
 
@@ -224,7 +224,7 @@ vector_t BaseBAMultiDim::update(const ocs2::vector_t &rbdStateMeasured, ocs2::sc
     // ux = (qx - qx_pre) / T_;  // (7j)
     // ax = (ux - ux_pre) / T_;
 
-    //第二版PDF推导
+    // 第二版PDF推导
     ux_star = ((Mx + Dx * T_+ Kx * T_*T_).partialPivLu().inverse())*(Mx * ux_pre + Mx * qx_pre / T_ + Dx * qx_pre + T_ * (Mx * ddot_q0 + Dx * dot_q0 + Kx * q0 + tau_ext));  // 2.27
     qx_star = T_ * ux_star; // 2.28
     phi_a = ((M +  C * T_)* q) / (T_ * T_) + B * q_pre / T_ + G; // 2.29
@@ -245,26 +245,26 @@ vector_t BaseBAMultiDim::update(const ocs2::vector_t &rbdStateMeasured, ocs2::sc
 
 
 /**************************************************PID控制器版本***********************************************/ 
-/*
-    Khat = K_pid + B_pid / T_ + L_pid * T_;
-    Mat_1 = matrix2_t::Identity() + (Mx + Dx * T_).inverse() * Kx * (T_ * T_);
-    Mat_2 = M_pid / (T_ * T_) + Khat;
-    ux_star = ((Mx + Dx * T_).inverse()) * (Mx * ux_pre + T_ * (Mx * ddot_q0 + Dx * dot_q0 + Kx * q0 + tau_ext));
-    qx_star = qx_pre + T_ * ux_star; 
-    phi_b =  B_pid * (qx_pre -  q_pre) / T_ - L_pid * a_pre;
-    phi_a = M_pid * (q - qx_pre - T_ * ux_pre) / (T_ * T_);
-    q1_star = q + ((M_pid / (T_ * T_) + Khat).partialPivLu().inverse()) * (phi_b - phi_a);
-    tau_star = Mat_2 * Mat_1.partialPivLu().inverse() * qx_star - Mat_2 * q1_star;
-    tau = projectionFunction(tau_star);
-    qx = q1_star + Mat_2.partialPivLu().inverse() * tau;
-    ux = (qx - qx_pre) / T_;
-    a = a_pre + T_ * (qx - q);
 
-    qx_pre = qx;
-    ux_pre = ux;
-    q_pre = q;
-    a_pre = a;
-*/
+    // Khat = K_pid + B_pid / T_ + L_pid * T_;
+    // Mat_1 = matrix2_t::Identity() + (Mx + Dx * T_).inverse() * Kx * (T_ * T_);
+    // Mat_2 = M_pid / (T_ * T_) + Khat;
+    // ux_star = ((Mx + Dx * T_).inverse()) * (Mx * ux_pre + T_ * (Mx * ddot_q0 + Dx * dot_q0 + Kx * q0 + tau_ext));
+    // qx_star = qx_pre + T_ * ux_star; 
+    // phi_b =  B_pid * (qx_pre -  q_pre) / T_ - L_pid * a_pre;
+    // phi_a = M_pid * (q - qx_pre - T_ * ux_pre) / (T_ * T_);
+    // q1_star = q + ((M_pid / (T_ * T_) + Khat).partialPivLu().inverse()) * (phi_b - phi_a);
+    // tau_star = Mat_2 * Mat_1.partialPivLu().inverse() * qx_star - Mat_2 * q1_star;
+    // tau = projectionFunction(tau_star);
+    // qx = q1_star + Mat_2.partialPivLu().inverse() * tau;
+    // ux = (qx - qx_pre) / T_;
+    // a = a_pre + T_ * (qx - q);
+
+    // qx_pre = qx;
+    // ux_pre = ux;
+    // q_pre = q;
+    // a_pre = a;
+
 
     vector2_t tau_cmd;
     tau_cmd = tau;

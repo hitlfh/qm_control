@@ -61,6 +61,8 @@ WbcBase::WbcBase(const ocs2::PinocchioInterface &pinocchioInterface, ocs2::Centr
     ros::NodeHandle nh;
     Joint1MPCdesiredPublisher_ = nh.advertise<std_msgs::Float64>(robotName + "_joint2_desired", 1);
     Joint2MPCdesiredPublisher_ = nh.advertise<std_msgs::Float64>(robotName + "_joint3_desired", 1);
+    BaseXMPCdesiredPublisher_ = nh.advertise<std_msgs::Float64>(robotName + "_baseX_desired", 1);
+    BaseYMPCdesiredPublisher_ = nh.advertise<std_msgs::Float64>(robotName + "_baseY_desired", 1);
     
     ros::NodeHandle nh_weight = ros::NodeHandle(controller_nh, "wbc");
     dynamic_srv_ = std::make_shared<dynamic_reconfigure::Server<qm_wbc::WbcWeightConfig>>(nh_weight);
@@ -150,6 +152,8 @@ vector_t WbcBase::update(const ocs2::vector_t &stateDesired, const ocs2::vector_
 
     scalar_t q1_d;
     scalar_t q2_d;
+    scalar_t base_xd;
+    scalar_t base_yd;
     if(referenceManagerPtr_ == nullptr){
         throw std::runtime_error("[CompliantWbc] ReferenceManager pointer cannot be a nullptr!");
     } else{
@@ -159,15 +163,21 @@ vector_t WbcBase::update(const ocs2::vector_t &stateDesired, const ocs2::vector_
         const size_t size = timeTrajectory.size();
         q1_d = stateTrajectory[size-1][25];   //MPC算出来的期望的机械臂第2关节角度
         q2_d = stateTrajectory[size-1][26];   //MPC算出来的期望的机械臂第3关节角度
+        base_xd = stateTrajectory[size-1][6];
+        base_yd = stateTrajectory[size-1][7];
     }
     // std_msgs::Float64 msg;
     // msg.data = qx_;
     // qx_pub_.publish(msg);
-    std_msgs::Float64 msg1,msg2;
+    std_msgs::Float64 msg1,msg2,msg3,msg4;
     msg1.data = q1_d;
     msg2.data = q2_d;
     Joint1MPCdesiredPublisher_.publish(msg1);
     Joint2MPCdesiredPublisher_.publish(msg2);
+    msg3.data = base_xd;
+    msg4.data = base_yd;
+    BaseXMPCdesiredPublisher_.publish(msg3);
+    BaseYMPCdesiredPublisher_.publish(msg4);
 
     return {};
 }
@@ -706,7 +716,7 @@ vector6_t WbcBase::getExternalBaseTorque(){
 }
 
 //得到多维离散化需要的逆动力学的惯性项  只考虑机械臂的第2、3关节
-matrix2_t WbcBase::getInertiaTerm(){
+matrix2_t WbcBase::getArmInertiaTerm(){
     auto& data = pinocchioInterfaceMeasured_.getData();
     matrix_t M, M_arm23, M_arm;
     M = data.M;
@@ -721,7 +731,7 @@ matrix2_t WbcBase::getInertiaTerm(){
     return M_arm23;
 }
 //得到多维离散化需要的逆动力学的科氏力矩阵  只考虑机械臂的第2、3关节
-matrix2_t WbcBase::getCoriolisTerm(){
+matrix2_t WbcBase::getArmCoriolisTerm(){
     auto& data = pinocchioInterfaceMeasured_.getData();
     matrix_t C, C_arm23, C_arm;
     C = data.C;
@@ -736,8 +746,24 @@ matrix2_t WbcBase::getCoriolisTerm(){
     return C_arm23;
 }
 
-//得到多维离散化需要的逆动力学的非线性项 只考虑机械臂的第2、3关节
-vector6_t WbcBase::getNonlinearTerm(){
+//得到多维离散化需要的逆动力学的惯性项  只考虑base的xy方向
+matrix2_t WbcBase::getBaseInertiaTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    matrix_t M, M_baseXY;
+    M = data.M;
+    M_baseXY = M.topLeftCorner(2, 2);   // 对应base XY方向的惯性矩阵
+    return M_baseXY;
+}
+//得到多维离散化需要的逆动力学的科氏力矩阵  只考虑base的xy方向
+matrix2_t WbcBase::getBaseCoriolisTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    matrix_t C, C_baseXY;
+    C = data.C;
+    C_baseXY = C.topLeftCorner(2, 2); 
+    return C_baseXY;
+}
+//得到多维离散化需要的逆动力学的非线性项 只考虑机械臂
+vector6_t WbcBase::getArmNonlinearTerm(){
     auto& data = pinocchioInterfaceMeasured_.getData();
     vector_t n;
     vector2_t n_arm23;
@@ -749,8 +775,8 @@ vector6_t WbcBase::getNonlinearTerm(){
     return n_arm;
 }
 
-//得到多维离散化需要的逆动力学的重力项 只考虑机械臂的第2、3关节
-vector6_t WbcBase::getGravityTerm(){
+//得到多维离散化需要的逆动力学的重力项 只考虑机械臂
+vector6_t WbcBase::getArmGravityTerm(){
     auto& data = pinocchioInterfaceMeasured_.getData();
     vector_t g;
     vector2_t g_arm23;
@@ -760,6 +786,31 @@ vector6_t WbcBase::getGravityTerm(){
     //g_arm23 = g_arm.segment<2>(1);;
 
     return g_arm;
+}
+
+//得到多维离散化需要的逆动力学的非线性项 只考虑base
+vector6_t WbcBase::getBaseNonlinearTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    vector_t n;
+    vector2_t n_baseXY;
+    vector6_t n_base ;
+    n = data.nle; 
+    n_base = n.topRows(6);
+
+    return n_base;
+}
+
+//得到多维离散化需要的逆动力学的重力项 只考虑base
+vector6_t WbcBase::getBaseGravityTerm(){
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    vector_t g;
+    vector2_t g_baseXY;
+    vector6_t g_base;
+    g = data.g; 
+    g_base = g.topRows(6);
+    //g_arm23 = g_arm.segment<2>(1);;
+
+    return g_base;
 }
 
 Task WbcBase::formulateManipulatorTorqueTask(const ocs2::vector_t &inputDesired) {   //张师兄毕业论文里公式（5-16）第二行
@@ -891,6 +942,22 @@ Task WbcBase::formulateBaseXMotionTrackingTask(const ocs2::scalar_t qx, const oc
 
     b[0] =  ddot_qx + baseLinearKp_ * (qx - qMeasured_[0])
             + baseLinearKd_ * (dot_qx - vMeasured_[0]);
+
+    return {a, b, matrix_t(), vector_t()};
+}
+
+Task WbcBase::formulateBaseYMotionTrackingTask(const ocs2::scalar_t qx, const ocs2::scalar_t dot_qx,
+                                               const ocs2::scalar_t ddot_qx) {
+    matrix_t a(1, numDecisionVars_);
+    vector_t b(a.rows());
+
+    a.setZero();
+    b.setZero();
+
+    a.block(0, 1, 1, 1) = matrix_t::Identity(1, 1);
+
+    b[0] =  ddot_qx + baseLinearKp_ * (qx - qMeasured_[1])
+            + baseLinearKd_ * (dot_qx - vMeasured_[1]);
 
     return {a, b, matrix_t(), vector_t()};
 }
@@ -1151,21 +1218,6 @@ Task WbcBase::formulateMultiJoint12ProxyTrackingTask(const scalar_t proxy1,const
 
 //     return {a, b, matrix_t(), vector_t()};
 // }
-Task WbcBase::formulateBaseYMotionTrackingTask(const ocs2::scalar_t qx, const ocs2::scalar_t dot_qx,
-                                               const ocs2::scalar_t ddot_qx) {
-    matrix_t a(1, numDecisionVars_);
-    vector_t b(a.rows());
-
-    a.setZero();
-    b.setZero();
-
-    a.block(0, 1, 1, 1) = matrix_t::Identity(1, 1);
-
-    b[0] = ddot_qx + baseLinearKp_ * (qx - qMeasured_[1])
-           + baseLinearKd_ * (dot_qx - vMeasured_[1]);
-
-    return {a, b, matrix_t(), vector_t()};
-}
 
 // inputDesired[x, y]
 Task WbcBase::formulateXYContactForceTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired){
@@ -1187,6 +1239,28 @@ Task WbcBase::formulateXYContactForceTaskWithCompliant(const vector_t &inputDesi
             b[i*2+1] = imp_y;
         }
     }
+    return {a, b, matrix_t(), vector_t()};
+}
+
+Task WbcBase::formulateXYContactTorqueTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired){
+    matrix_t a(2, numDecisionVars_);
+    vector_t b(a.rows());
+    a.setZero();
+    b.setZero();
+
+    vector_t imp = impDesired;
+    scalar_t imp_x = imp[0];
+    scalar_t imp_y = imp[1];
+
+    auto& data = pinocchioInterfaceMeasured_.getData();
+    matrix_t Mb, Jcb_T_top2;
+    Mb = data.M.topRows(6);
+    Eigen::MatrixXd Mat_zero = Eigen::MatrixXd::Zero(Mb.rows(), Mb.cols());
+    Eigen::MatrixXd Mat_zero_top2 = Mat_zero.topRows(2);
+    Jcb_T_top2 = j_.transpose().topRows(2);
+    a << Mat_zero_top2, Jcb_T_top2;
+    b = imp;
+
     return {a, b, matrix_t(), vector_t()};
 }
 

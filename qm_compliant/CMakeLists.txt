@@ -55,6 +55,7 @@ add_library(${PROJECT_NAME}
         src/BoundedAdmittanceMultiDim.cpp
         src/AdmittanceMultiDim.cpp
         src/BaseBAMultiDim.cpp
+        src/BaseAdmCMultiDim.cpp
         )
 add_dependencies(${PROJECT_NAME}
         ${catkin_EXPORTED_TARGETS}

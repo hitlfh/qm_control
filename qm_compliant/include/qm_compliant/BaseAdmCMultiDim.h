@@ -1,18 +1,18 @@
 //
-// Created by hitlfh on 2024/8/1.
+// Created by hitlfh on 2024/8/8.
 //
 
-#ifndef SRC_BASEBAMULTIDIM_H
-#define SRC_BASEBAMULTIDIM_H
+#ifndef SRC_BASEADMCMULTIDIM_H
+#define SRC_BASEADMCMULTIDIM_H
 
 #include "qm_compliant/CompliantBase.h"
 #include <std_msgs/Float64.h>
 namespace qm{
 using namespace ocs2;
 
-class BaseBAMultiDim : public CompliantBase {
+class BaseAdmCMultiDim : public CompliantBase {
 public:
-    BaseBAMultiDim(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
+    BaseAdmCMultiDim(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
                       const PinocchioEndEffectorKinematics &armEeKinematics, ros::NodeHandle &controller_nh);
     vector_t update(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period);
     void initParam();
@@ -47,7 +47,7 @@ private:
     Eigen::Matrix2d M_pid, K_pid, B_pid, L_pid;  // PID控制器参数
     Eigen::Vector2d a, a_pre;
     Eigen::Vector2d q0, dot_q0, ddot_q0;  // 期望状态
-    Eigen::Vector2d qx, qx_pre, q, q_pre, ax;
+    Eigen::Vector2d qx, qx_pre, q, q_pre, ax, ddot_qr, dot_qr, S;
     Eigen::Vector2d ux, ux_pre;
     Eigen::Vector2d tau, tau_star, tau_max;
     Eigen::Vector2d phi_a, phi_b;
@@ -69,4 +69,4 @@ private:
 
 }
 
-#endif //SRC_BASEBAMULTIDIM_H
+#endif //SRC_BASEADMCMULTIDIM_H

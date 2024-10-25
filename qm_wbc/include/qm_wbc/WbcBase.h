@@ -50,10 +50,14 @@ protected:
     vector6_t getExternalArmTorque();
     vector6_t getExternalBaseTorque();
 
-    matrix2_t getInertiaTerm();
-    matrix2_t getCoriolisTerm();
-    vector6_t getNonlinearTerm();
-    vector6_t getGravityTerm();
+    matrix2_t getArmInertiaTerm();
+    matrix2_t getArmCoriolisTerm();
+    matrix2_t getBaseInertiaTerm();
+    matrix2_t getBaseCoriolisTerm();
+    vector6_t getArmNonlinearTerm();
+    vector6_t getArmGravityTerm();
+    vector6_t getBaseNonlinearTerm();
+    vector6_t getBaseGravityTerm();
 
     vector3_t getEEPosition();
     vector3_t getEEVelocity();
@@ -87,6 +91,7 @@ protected:
     Task ManipulatorTorqueTaskJointTwoAdmittance(const vector_t& inputDesired);
 
     Task formulateBaseXMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
+    Task formulateBaseYMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateBaseXAdmittanceTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint1ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
@@ -103,9 +108,8 @@ protected:
     Task formulateMultiJoint2ProxyTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateMultiJoint12ProxyTrackingTask(const scalar_t proxy1,const scalar_t proxy1_dot,const scalar_t proxy1_ddot,const scalar_t proxy2 ,const scalar_t proxy2_dot,const scalar_t proxy2_ddot);
 
-
-    Task formulateBaseYMotionTrackingTask(const scalar_t qx, const scalar_t dot_qx, const scalar_t ddot_qx);
     Task formulateXYContactForceTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired);
+    Task formulateXYContactTorqueTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired);
     Task formulateZContactForceTask(const vector_t &inputDesired);
     Task formulateYContactForceTask(const vector_t &inputDesired);
     Task formulateXContactForceTaskWithCompliant(const vector_t &inputDesired, const vector_t &impDesired);
@@ -116,6 +120,7 @@ protected:
     vector_t eeForce_;
 
     ros::Publisher Joint1MPCdesiredPublisher_, Joint2MPCdesiredPublisher_;
+    ros::Publisher BaseXMPCdesiredPublisher_, BaseYMPCdesiredPublisher_;
 
     std::shared_ptr<ReferenceManagerInterface> referenceManagerPtr_;
 

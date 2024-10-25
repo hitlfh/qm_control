@@ -15,6 +15,7 @@
 #include <qm_compliant/BoundedAdmittanceMultiDim.h>
 #include <qm_compliant/AdmittanceMultiDim.h>
 #include <qm_compliant/BaseBAMultiDim.h>
+#include <qm_compliant/BaseAdmCMultiDim.h>
 #include <ocs2_oc/synchronized_module/ReferenceManagerInterface.h>
 
 #include <dynamic_reconfigure/server.h>
@@ -45,14 +46,17 @@ private:
     void BaseAdmittanceInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                                    const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);   //base x 方向单维      
     void BaseBAMultiDimiInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
-                                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);   //base 多维离散化                                                
+                                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);   //base 多维离散化(集合值算法)
+    void BaseAdmCMultiDimiInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);   //base 多维离散化（AdmC）                                               
     void AdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     void BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     vector6_t BaseBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,
                                           vector_t imp, scalar_t force_z);      //base x 方向单维度update
     vector6_t MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp);   // 机械臂多维update（集值算法）
     vector6_t MultiAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp);   // 机械臂多维update（AdmC）
-    vector6_t BaseBAMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z);  //base多维update
+    vector6_t BaseBAMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z);  //base多维update(集值算法)
+    vector6_t BaseAdmCMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z);  //base多维update（AdmCs）
     vector_t MultiAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
                                size_t mode, scalar_t period, scalar_t time);
     vector_t MultiBoundedAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
@@ -74,7 +78,9 @@ private:
     std::shared_ptr<BaseBAMultiDim> Base_bounded_admittance_controller_;   // 多维微分包含导纳离散化(base 的xy方向)
 
     // AdmC for manipulator
-    std::shared_ptr<AdmittanceMultiDim> Multi_admittance_controller_;   // 多维常规饱和导纳离散化
+    std::shared_ptr<AdmittanceMultiDim> Multi_admittance_controller_;   // 多维常规饱和导纳离散化(机械臂两个关节)
+    // AdmC for base
+    std::shared_ptr<BaseAdmCMultiDim> Base_AdmC_controller_;   // 多维常规饱和导纳离散化(base 的xy方向)
 
     std::shared_ptr<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>> dynamic_srv_{};
 
@@ -131,6 +137,7 @@ private:
     ros::Publisher Multi_M_1_pub, Multi_M_2_pub, Multi_N_1_pub, Multi_N_2_pub;
     ros::Publisher Gravity1_pub,Gravity2_pub;
     // bounded admittance param
+    ros::Publisher BaseXforce_pub, BaseYforce_pub, BaseZforce_pub;
     scalar_t mu_{};
     size_t begin_{}, end_{};  //切换导纳控制器使能关节
     //柔顺控制模式切换标志位
