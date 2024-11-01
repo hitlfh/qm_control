@@ -17,5 +17,6 @@
     <depend>qm_common</depend>
     <depend>qm_msgs</depend>
     <depend>qm_compliant</depend>
+    <depend>qm_force_observer</depend>
     <depend>qpoases_catkin</depend>
 </package>

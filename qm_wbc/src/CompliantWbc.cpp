@@ -16,7 +16,9 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
     tau_max_.setZero();             //机械臂力矩最大值
     imp_desired_.resize(generalizedCoordinatesNum_);
     imp_desired_.setZero();
-
+    
+    // init MBO
+    MBOInit(pinocchioInterface, info, armEeKinematics, controller_nh);
     // init compliant controller
     impendace_controller_ = std::make_shared<CartesianImpendance>(pinocchioInterface, info, armEeKinematics, controller_nh);
     AdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);
@@ -26,10 +28,18 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
     BaseAdmCMultiDimiInit(pinocchioInterface, info, armEeKinematics, controller_nh); // base多维AdmC初始化
     MultiBoundedAdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);  // 机械臂多维饱和集值控制器初始化
     MultiAdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);  // 机械臂多维饱和常规控制器初始化
+
     ros::NodeHandle nh;
     BaseXforce_pub = nh.advertise<std_msgs::Float64>("/MPC_baseX_force", 1);
     BaseYforce_pub = nh.advertise<std_msgs::Float64>("/MPC_baseY_force", 1);
     BaseZforce_pub = nh.advertise<std_msgs::Float64>("/MPC_baseZ_force", 1);
+
+    Arm_joint2_mes_pub = nh.advertise<std_msgs::Float64>("/Arm_joint2_extTorque_measured", 1);
+    Arm_joint3_mes_pub = nh.advertise<std_msgs::Float64>("/Arm_joint3_extTorque_measured", 1);
+    base_X_mes_pub = nh.advertise<std_msgs::Float64>("/Base_X_extTorque_measured", 1);
+    base_Y_mes_pub = nh.advertise<std_msgs::Float64>("/Base_Y_extTorque_measured", 1);
+
+
     // dynamic reconfigure
     ros::NodeHandle nh_weight = ros::NodeHandle(controller_nh,"compliant");
     dynamic_srv_ = std::make_shared<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>>(nh_weight);
@@ -37,6 +47,11 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
         dynamicCallback(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2));
     };
     dynamic_srv_->setCallback(cb);
+}
+// MBO 初始化
+void CompliantWbc::MBOInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh){
+    Momentum_observer = std::make_shared<MBO>(pinocchioInterface, info, armEeKinematics, controller_nh);
 }
 // 单维度普通无力矩饱和导纳
 void CompliantWbc::AdmittanceInit(const ocs2::PinocchioInterface &pinocchioInterface, ocs2::CentroidalModelInfo info,
@@ -294,9 +309,13 @@ vector6_t CompliantWbc::MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMea
     tau_desired.setZero();
     tau_admittance.setZero();
     torque_ext.setZero();
-
+    // 通过雅可比矩阵转置乘上力得到外力矩
     torque_ext = getExternalArmTorque();
     torque_ext23 = torque_ext.block(1, 0, 2, 1);
+
+    // 通过动量观测器估计外力矩
+    //torque_ext_MBO = Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
+
     //tau_feedback = rbdStateMeasured.tail(6);
     //tau_desired = imp.tail(6);
     scalar_t q1_d;
@@ -1161,6 +1180,33 @@ vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::ve
     // wbc
     WbcBase::update(stateDesired, inputDesired, rbdStateMeasured, mode, period, time);
     setManipulatorTorqueLimit(tau_max_);
+    // MBO估计外力矩
+    torque_ext_MBO = Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
+    // 发布测量到的实际外力矩
+    vector6_t arm_torque_ext;
+    vector2_t arm_torque_ext23;
+    arm_torque_ext.setZero();
+    arm_torque_ext23.setZero();
+    arm_torque_ext = getExternalArmTorque();
+    arm_torque_ext23 = arm_torque_ext.block(1, 0, 2, 1);
+    std_msgs::Float64 torque_ext_msg1, torque_ext_msg2;
+    torque_ext_msg1.data = arm_torque_ext23[0];
+    torque_ext_msg2.data = arm_torque_ext23[1];
+    Arm_joint2_mes_pub.publish(torque_ext_msg1);
+    Arm_joint3_mes_pub.publish(torque_ext_msg2);
+
+    vector6_t base_torque_ext;
+    vector2_t base_torque_extXY;
+    base_torque_ext.setZero();
+    base_torque_extXY.setZero();
+    base_torque_ext = getExternalBaseTorque();
+    base_torque_extXY = base_torque_ext.block(0, 0, 2, 1);
+    std_msgs::Float64 torque_msg3, torque_msg4;
+    torque_msg3.data = base_torque_extXY[0];
+    torque_msg4.data = base_torque_extXY[1];
+    base_X_mes_pub.publish(torque_msg3);
+    base_Y_mes_pub.publish(torque_msg4);
+
 
     if(time < 5)
     {

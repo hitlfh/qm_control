@@ -264,6 +264,9 @@ void QMController::updateStateEstimation(const ros::Time &time, const ros::Durat
     // EE state
     eePose_ = stateEstimate_->getEEPose();
     eeForce_ = stateEstimate_->getEEForce();
+    std_msgs::Float64 force_msg;
+    force_msg.data = eeForce_.norm();
+    EEforce_norm_Pub_.publish(force_msg);
     // Force and torque state
     currentForceObservation_.time = currentObservation_.time;
     currentForceObservation_.input = eeForce_;
@@ -353,7 +356,8 @@ void QMController::setupMpc(ros::NodeHandle &controller_nh) {
     observationPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation", 1);
     eeStatePublisher_ = nh.advertise<qm_msgs::ee_state>(robotName + "_mpc_observation_ee_state", 1);
     forceStatePublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation_force", 1);
-    impDesiredPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation_imp_desired", 1);;
+    impDesiredPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation_imp_desired", 1);
+    EEforce_norm_Pub_ = nh.advertise<std_msgs::Float64>(robotName + "_EEforce_norm", 1);
 }
 
 void QMController::setupMrt() {

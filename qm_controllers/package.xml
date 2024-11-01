@@ -17,7 +17,7 @@
   <depend>qm_estimation</depend>
   <depend>qm_msgs</depend>
   <depend>qm_compliant</depend>
-
+  <depend>qm_force_observer</depend>
   <depend>controller_interface</depend>
 
   <depend>ocs2_legged_robot_ros</depend>

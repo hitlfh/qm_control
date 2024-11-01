@@ -15,6 +15,7 @@ find_package(catkin REQUIRED
         dynamic_reconfigure
         qm_msgs
         qm_compliant
+        qm_force_observer
         )
 
 find_package(PkgConfig REQUIRED)

@@ -10,6 +10,7 @@ find_package(catkin REQUIRED
         qm_common
         qm_msgs
         qm_compliant
+        qm_force_observer
         qpoases_catkin
         )
 
@@ -34,6 +35,7 @@ catkin_package(
         qm_common
         qm_msgs
         qm_compliant
+        qm_force_observer
         DEPENDS
         pinocchio
 )
