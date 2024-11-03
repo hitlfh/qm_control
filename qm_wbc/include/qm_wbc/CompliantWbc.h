@@ -6,7 +6,6 @@
 #define SRC_COMPLIANTWBC_H
 
 #include "qm_wbc/WbcBase.h"
-
 #include <qm_compliant/BoundedAdmittance.h>
 #include <qm_compliant/BoundedAdmittanceWithK.h>
 #include <qm_compliant/CartesianImpendance.h>
@@ -17,6 +16,7 @@
 #include <qm_compliant/BaseBAMultiDim.h>
 #include <qm_compliant/BaseAdmCMultiDim.h>
 #include "qm_force_observer/MBO.h"
+#include "qm_force_observer/STA.h"
 #include <ocs2_oc/synchronized_module/ReferenceManagerInterface.h>
 
 #include <dynamic_reconfigure/server.h>
@@ -51,7 +51,9 @@ private:
     void BaseAdmCMultiDimiInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                                    const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);   //base 多维离散化（AdmC）  
     void MBOInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
-                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // MBO观测器初始化                                          
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // MBO观测器初始化    
+    void STAInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // STA观测器初始化                                      
     void AdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     void BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     vector6_t BaseBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,
@@ -86,10 +88,16 @@ private:
     std::shared_ptr<BaseAdmCMultiDim> Base_AdmC_controller_;   // 多维常规饱和导纳离散化(base 的xy方向)
 
     // 外力动量观测器
+    // MBO
     std::shared_ptr<MBO> Momentum_observer;
     vector_t torque_ext_MBO; // 总的MBO估计外力矩
     vector_t arm_torque_ext_MBO; // 机械臂的第二三关节估计外力矩
     vector_t base_torque_ext_MBO;  // base的xy方向估计外力矩
+    // STA
+    std::shared_ptr<STA> STA_Momentum_observer;
+    vector_t torque_ext_STA; // 总的MBO估计外力矩
+    vector_t arm_torque_ext_STA; // 机械臂的第二三关节估计外力矩
+    vector_t base_torque_ext_STA;  // base的xy方向估计外力矩
 
     std::shared_ptr<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>> dynamic_srv_{};
 

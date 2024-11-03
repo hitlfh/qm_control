@@ -15,12 +15,12 @@
 #include <ocs2_robotic_tools/common/RotationDerivativesTransforms.h>
 
 //#include "qm_compliant/CompliantBase.h"
-#include "qm_force_observer/MBO.h"
+#include "qm_force_observer/STA.h"
 #include <std_msgs/Float64.h>
 
 namespace qm{
 using namespace ocs2;
-MBO::MBO(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
+STA::STA(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
                              const PinocchioEndEffectorKinematics &armEeKinematics, ros::NodeHandle &controller_nh)
      : pinocchioInterface_(pinocchioInterface),
        info_(std::move(info)),
@@ -37,7 +37,7 @@ MBO::MBO(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
     actuatedDofNum_ = info_.actuatedDofNum;
     initParam();
 
-    ROS_INFO_STREAM("\033[32m MBO initialized\033[0m");
+    ROS_INFO_STREAM("\033[32m STA initialized\033[0m");
 
     // dynamic reconfigure
     ros::NodeHandle nh_weight = ros::NodeHandle(controller_nh,"observer");
@@ -50,18 +50,31 @@ MBO::MBO(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
 
 
 // 初始化各种参数
-void MBO::initParam(){
-    gainAngle.resize(3, 3);
-    gainAngle.setZero();
-    gainLinear.resize(3, 3);
-    gainLinear.setZero();
-    gainLeg.resize(12, 12);
-    gainLeg.setZero();
-    gainArm.resize(6, 6);
-    gainArm.setZero();
+void STA::initParam(){
+    Angle_K1.setZero();
+    Angle_K2.setZero();
+    Angle_K3.setZero();
+    Angle_K4.setZero();
+
+    Linear_K1.setZero();
+    Linear_K2.setZero();
+    Linear_K3.setZero();
+    Linear_K4.setZero();
     
+    Leg_K1.setZero();
+    Leg_K2.setZero();
+    Leg_K3.setZero();
+    Leg_K4.setZero();
+
+    Arm_K1.setZero();
+    Arm_K2.setZero();
+    Arm_K3.setZero();
+    Arm_K4.setZero();
+    
+
+    int totalRows = Angle_K1.rows() + Linear_K1.rows() + Leg_K1.rows() + Arm_K1.rows();
+    dot_r.resize(totalRows);
     dot_r.setZero();
-    int totalRows = gainAngle.rows() + gainLinear.rows() + gainLeg.rows() + gainArm.rows();
     r.resize(totalRows);
     r.setZero(totalRows);
     p.resize(totalRows);
@@ -75,8 +88,15 @@ void MBO::initParam(){
     torque_ext_hat.setZero();
     // force_ext_true.resize(6);
     // force_ext_true.setZero();
-    gainMBO.resize(totalRows, totalRows);
-    gainMBO.setZero();
+    Gain_K1.resize(totalRows, totalRows);
+    Gain_K2.resize(totalRows, totalRows);
+    Gain_K3.resize(totalRows, totalRows);
+    Gain_K4.resize(totalRows, totalRows);
+    Gain_K1.setZero();
+    Gain_K2.setZero();
+    Gain_K3.setZero();
+    Gain_K4.setZero();
+
     //ROS_INFO_STREAM("\033[32m sizeMBOgainRows:"<< totalRows << "\033[0m");
     // 初始化 S 矩阵  
     selectMatrix.resize(info_.actuatedDofNum, info_.generalizedCoordinatesNum);  // 初始化选择矩阵的维度
@@ -85,31 +105,60 @@ void MBO::initParam(){
     selectMatrix << zeroMatrix, I;
 
     ros::NodeHandle nh;
-    armTau2hat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/armjoint2" , 1);
-    armTau3hat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/armjoint3" , 1);
-    baseXhat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/baseX" , 1);
-    baseYhat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/baseY" , 1);
-    extForcehatAbs_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/extForceAbs_hat" , 1);
+    armTau2hat_pub_= nh.advertise<std_msgs::Float64>("/STAestimation/armjoint2" , 1);
+    armTau3hat_pub_= nh.advertise<std_msgs::Float64>("/STAestimation/armjoint3" , 1);
+    baseXhat_pub_= nh.advertise<std_msgs::Float64>("/STAestimation/baseX" , 1);
+    baseYhat_pub_= nh.advertise<std_msgs::Float64>("/STAestimation/baseY" , 1);
+    extForcehatAbs_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/extForceAbs_hat" , 1);
     //extForceAbs_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/extForceAbs_true" , 1);
 }
 
-void MBO::dynamicCallback(qm_force_observer::ObserverConfig &config, uint32_t) {
-    scalar_t Ko_ang;
-    scalar_t Ko_lin;
-    scalar_t Ko_leg;
-    scalar_t Ko_arm;
-    Ko_ang = config.MBO_ang;
-    Ko_lin = config.MBO_lin;
-    Ko_leg = config.MBO_leg;
-    Ko_arm = config.MBO_arm;
-    setParam(Ko_ang, Ko_lin, Ko_leg, Ko_arm);
-    ROS_INFO_STREAM("\033[32m Update the MBO Force Observer Param. \033[0m");
+void STA::dynamicCallback(qm_force_observer::ObserverConfig &config, uint32_t) {
+    scalar_t Angle_K1;
+    Angle_K1 = config.STA_ang_k1;
+    scalar_t Angle_K2;
+    Angle_K2 = config.STA_ang_k2;
+    scalar_t Angle_K3;
+    Angle_K3 = config.STA_ang_k3;
+    scalar_t Angle_K4;
+    Angle_K4 = config.STA_ang_k4;
+    
+    scalar_t Linear_K1;
+    Linear_K1 = config.STA_lin_k1;
+    scalar_t Linear_K2;
+    Linear_K2 = config.STA_lin_k2;
+    scalar_t Linear_K3;
+    Linear_K3 = config.STA_lin_k3;
+    scalar_t Linear_K4;
+    Linear_K4 = config.STA_lin_k4;
+
+    scalar_t Leg_K1;
+    Leg_K1 = config.STA_leg_k1;
+    scalar_t Leg_K2;
+    Leg_K2 = config.STA_leg_k2;
+    scalar_t Leg_K3;
+    Leg_K3 = config.STA_leg_k3;
+    scalar_t Leg_K4;
+    Leg_K4 = config.STA_leg_k4;
+
+    scalar_t Arm_K1;
+    Arm_K1 = config.STA_arm_k1;
+    scalar_t Arm_K2;
+    Arm_K2 = config.STA_arm_k2;
+    scalar_t Arm_K3;
+    Arm_K3 = config.STA_arm_k3;
+    scalar_t Arm_K4;
+    Arm_K4 = config.STA_arm_k4;
+
+
+    setParam(Angle_K1, Angle_K2, Angle_K3, Angle_K4, Linear_K1, Linear_K2, Linear_K3, Linear_K4, Leg_K1, Leg_K2, Leg_K3, Leg_K4, Arm_K1, Arm_K2, Arm_K3, Arm_K4);
+    ROS_INFO_STREAM("\033[32m Update the STA Force Observer Param. \033[0m");
 }
 
-vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period){
+vector_t STA::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period){
     // 得到四足机械臂当前的测量状态
 
-    //ROS_INFO_STREAM("\033[32m MBO running. \033[0m");
+    //ROS_INFO_STREAM("\033[32m STA running. \033[0m");
 
     qMeasured_.setZero();
     vMeasured_.setZero();
@@ -191,36 +240,22 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     jointTorque = rbdStateMeasured.segment(2 * generalizedCoordinatesNum_ + 7 + 3, info_.actuatedDofNum);  // 实际测量关节力矩
     generalizedTorque = selectMatrix.transpose() * jointTorque;
 
-    // // debug
-    // size_t sizeJointTorque = jointTorque.rows();
-    // size_t sizegeneralizedTorque = generalizedTorque.rows();
-    // size_t sizevMeasured_ = vMeasured_.rows();
-    // size_t sizeG = G.rows();
-    // size_t sizeCrows = C.rows();
-    // size_t sizeCcols = C.cols();
 
-    // ROS_INFO_STREAM("\033[32m sizeJointTorque:"<< sizeJointTorque << "\033[0m");
-    // ROS_INFO_STREAM("\033[32m sizegeneralizedTorque:"<< sizegeneralizedTorque << "\033[0m");
-    // ROS_INFO_STREAM("\033[32m sizevMeasured_:"<< sizevMeasured_ << "\033[0m");
-    // ROS_INFO_STREAM("\033[32m sizeG:"<< sizeG << "\033[0m");
-    // ROS_INFO_STREAM("\033[32m sizeCrows:"<< sizeCrows << "\033[0m");
-    // ROS_INFO_STREAM("\033[32m sizeCrows:"<< sizeCcols << "\033[0m");
-
-    // ROS_INFO_STREAM("\033[32m MBO get generalizedTorque. \033[0m");
-    //rbdState_.segment(2 * generalizedCoordinatesNum_ + 7 + 3, info_.actuatedDofNum) = jointTor;
-    // MBO观测器
     T = period;
     p = M * qMeasured_;  // 实际动量
+    // // MBO观测器
+    // //p = pinocchio::cholesky::Mv(model, data, qMeasured_); // 利用惯性矩阵的稀疏性性质加速计算动量
+    // dot_p_hat =  generalizedTorque + r + C.transpose() * vMeasured_ - G;
 
-    // ROS_INFO_STREAM("\033[32m MBO get actual momentum. \033[0m");
+    // p_hat = p_hat + T * dot_p_hat;
+    // //r = gainMBO * (p - p_hat);
+    // torque_ext_hat = r;
 
-    //p = pinocchio::cholesky::Mv(model, data, qMeasured_); // 利用惯性矩阵的稀疏性性质加速计算动量
-    dot_p_hat =  generalizedTorque + r + C.transpose() * vMeasured_ - G;
-
-    //ROS_INFO_STREAM("\033[32m MBO get actual dot_p_hat. \033[0m");
-
+    // STA 观测器
+    dot_r = Gain_K3 * (p - p_hat)/(p - p_hat).norm() + Gain_K4 * (p - p_hat);
+    r = r + T * dot_r;
+    dot_p_hat = generalizedTorque + C.transpose() * vMeasured_ - G + Gain_K1 * (p - p_hat)/sqrt((p - p_hat).norm()) + Gain_K2 * (p - p_hat) + r;
     p_hat = p_hat + T * dot_p_hat;
-    r = gainMBO * (p - p_hat);
     torque_ext_hat = r;
     
     // force_ext_hat = Arm_J_PseudoInverse * torque_ext_hat;
@@ -246,7 +281,7 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     // 利用计算得到的外力得到base方向上的外力矩
     base_torque_ext_hat = Jeb_T * force_ext_hat;
 
-    //ROS_INFO_STREAM("\033[32m MBO get torque_ext_hat. \033[0m");
+    //ROS_INFO_STREAM("\033[32m STA get torque_ext_hat. \033[0m");
 
     std_msgs::Float64 tau_msg1;
     tau_msg1.data = torque_ext_hat(19);
@@ -273,17 +308,50 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
 }
 
 
-void MBO::setParam(scalar_t Ko_ang, scalar_t Ko_lin, scalar_t Ko_leg, scalar_t Ko_arm){
-    gainAngle.diagonal() << Ko_ang, Ko_ang, Ko_ang;
-    gainLinear.diagonal() << Ko_lin, Ko_lin, Ko_lin;
-    gainLeg.diagonal() << Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg, Ko_leg;
-    gainArm.diagonal() << Ko_arm, Ko_arm, Ko_arm, Ko_arm, Ko_arm, Ko_arm;
+void STA::setParam(scalar_t K1_ang, scalar_t K2_ang, scalar_t K3_ang, scalar_t K4_ang,
+                    scalar_t K1_lin, scalar_t K2_lin,scalar_t K3_lin,scalar_t K4_lin,
+                    scalar_t K1_leg, scalar_t K2_leg,scalar_t K3_leg,scalar_t K4_leg,
+                    scalar_t K1_arm, scalar_t K2_arm, scalar_t K3_arm, scalar_t K4_arm){
+    Angle_K1.diagonal() << K1_ang, K1_ang, K1_ang;
+    Angle_K2.diagonal() << K2_ang, K2_ang, K2_ang;
+    Angle_K3.diagonal() << K3_ang, K3_ang, K3_ang;
+    Angle_K4.diagonal() << K4_ang, K4_ang, K4_ang;
 
-    // 组合为最终的增益矩阵Ko
-    gainMBO.block(0, 0, gainAngle.rows(), gainAngle.cols()) = gainAngle;
-    gainMBO.block(gainAngle.rows(), gainAngle.cols(), gainLinear.rows(), gainLinear.cols()) = gainLinear;
-    gainMBO.block(gainAngle.rows() + gainLinear.rows(), gainAngle.cols() + gainLinear.cols(), gainLeg.rows(), gainLeg.cols()) = gainLeg;
-    gainMBO.block(gainAngle.rows() + gainLinear.rows() + gainLeg.rows(), gainAngle.cols() + gainLinear.cols() + gainLeg.cols(), gainArm.rows(), gainArm.cols()) = gainArm;
+    Linear_K1.diagonal() << K1_lin, K1_lin, K1_lin;
+    Linear_K2.diagonal() << K2_lin, K2_lin, K2_lin;
+    Linear_K3.diagonal() << K3_lin, K3_lin, K3_lin;
+    Linear_K4.diagonal() << K4_lin, K4_lin, K4_lin;
+
+    Leg_K1.diagonal() << K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg, K1_leg;
+    Leg_K2.diagonal() << K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg, K2_leg;
+    Leg_K3.diagonal() << K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg, K3_leg;
+    Leg_K4.diagonal() << K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg, K4_leg;
+
+    Arm_K1.diagonal() << K1_arm, K1_arm, K1_arm, K1_arm, K1_arm, K1_arm;
+    Arm_K2.diagonal() << K2_arm, K2_arm, K2_arm, K2_arm, K2_arm, K2_arm;
+    Arm_K3.diagonal() << K3_arm, K3_arm, K3_arm, K3_arm, K3_arm, K3_arm;
+    Arm_K4.diagonal() << K4_arm, K4_arm, K4_arm, K4_arm, K4_arm, K4_arm;
+
+    // 组合为最终的增益矩阵
+    Gain_K1.block(0, 0, Angle_K1.rows(), Angle_K1.cols()) = Angle_K1;
+    Gain_K1.block(Angle_K1.rows(), Angle_K1.cols(), Linear_K1.rows(), Linear_K1.cols()) = Linear_K1;
+    Gain_K1.block(Angle_K1.rows() + Linear_K1.rows(), Angle_K1.cols() + Linear_K1.cols(), Leg_K1.rows(), Leg_K1.cols()) = Leg_K1;
+    Gain_K1.block(Angle_K1.rows() + Linear_K1.rows() + Leg_K1.rows(), Angle_K1.cols() + Linear_K1.cols() + Leg_K1.cols(), Arm_K1.rows(), Arm_K1.cols()) = Arm_K1;
+
+    Gain_K2.block(0, 0, Angle_K1.rows(), Angle_K1.cols()) = Angle_K2;
+    Gain_K2.block(Angle_K1.rows(), Angle_K1.cols(), Linear_K1.rows(), Linear_K1.cols()) = Linear_K2;
+    Gain_K2.block(Angle_K1.rows() + Linear_K1.rows(), Angle_K1.cols() + Linear_K1.cols(), Leg_K1.rows(), Leg_K1.cols()) = Leg_K2;
+    Gain_K2.block(Angle_K1.rows() + Linear_K1.rows() + Leg_K1.rows(), Angle_K1.cols() + Linear_K1.cols() + Leg_K1.cols(), Arm_K1.rows(), Arm_K1.cols()) = Arm_K2;
+
+    Gain_K3.block(0, 0, Angle_K1.rows(), Angle_K1.cols()) = Angle_K3;
+    Gain_K3.block(Angle_K1.rows(), Angle_K1.cols(), Linear_K1.rows(), Linear_K1.cols()) = Linear_K3;
+    Gain_K3.block(Angle_K1.rows() + Linear_K1.rows(), Angle_K1.cols() + Linear_K1.cols(), Leg_K1.rows(), Leg_K1.cols()) = Leg_K3;
+    Gain_K3.block(Angle_K1.rows() + Linear_K1.rows() + Leg_K1.rows(), Angle_K1.cols() + Linear_K1.cols() + Leg_K1.cols(), Arm_K1.rows(), Arm_K1.cols()) = Arm_K3;
+
+    Gain_K4.block(0, 0, Angle_K1.rows(), Angle_K1.cols()) = Angle_K4;
+    Gain_K4.block(Angle_K1.rows(), Angle_K1.cols(), Linear_K1.rows(), Linear_K1.cols()) = Linear_K4;
+    Gain_K4.block(Angle_K1.rows() + Linear_K1.rows(), Angle_K1.cols() + Linear_K1.cols(), Leg_K1.rows(), Leg_K1.cols()) = Leg_K4;
+    Gain_K4.block(Angle_K1.rows() + Linear_K1.rows() + Leg_K1.rows(), Angle_K1.cols() + Linear_K1.cols() + Leg_K1.cols(), Arm_K1.rows(), Arm_K1.cols()) = Arm_K4;
 }
 
 

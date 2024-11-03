@@ -19,6 +19,8 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
     
     // init MBO
     MBOInit(pinocchioInterface, info, armEeKinematics, controller_nh);
+    // init STA
+    STAInit(pinocchioInterface, info, armEeKinematics, controller_nh);
     // init compliant controller
     impendace_controller_ = std::make_shared<CartesianImpendance>(pinocchioInterface, info, armEeKinematics, controller_nh);
     AdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);
@@ -52,6 +54,12 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
 void CompliantWbc::MBOInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh){
     Momentum_observer = std::make_shared<MBO>(pinocchioInterface, info, armEeKinematics, controller_nh);
+}
+
+// STA 初始化
+void CompliantWbc::STAInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh){
+    STA_Momentum_observer = std::make_shared<STA>(pinocchioInterface, info, armEeKinematics, controller_nh);
 }
 // 单维度普通无力矩饱和导纳
 void CompliantWbc::AdmittanceInit(const ocs2::PinocchioInterface &pinocchioInterface, ocs2::CentroidalModelInfo info,
@@ -1182,6 +1190,8 @@ vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::ve
     setManipulatorTorqueLimit(tau_max_);
     // MBO估计外力矩
     torque_ext_MBO = Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
+    // STA估计外力矩
+    torque_ext_STA = STA_Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
     // 发布测量到的实际外力矩
     vector6_t arm_torque_ext;
     vector2_t arm_torque_ext23;
