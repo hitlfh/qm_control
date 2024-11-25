@@ -29,8 +29,11 @@ MBO::MBO(const PinocchioInterface &pinocchioInterface, CentroidalModelInfo info,
 {
     qMeasured_ = vector_t(info_.generalizedCoordinatesNum);
     vMeasured_ = vector_t(info_.generalizedCoordinatesNum);
+    vMeasured_noise = vector_t(info_.generalizedCoordinatesNum);
     arm_j_ = matrix_t(6, info_.generalizedCoordinatesNum);
     arm_dj_ = matrix_t(6, info_.generalizedCoordinatesNum);
+    base_j_ = matrix_t(6, info_.generalizedCoordinatesNum);
+    base_dj_ = matrix_t(6, info_.generalizedCoordinatesNum);
     G = vector_t(info_.generalizedCoordinatesNum);
 
     generalizedCoordinatesNum_ = info_.generalizedCoordinatesNum;
@@ -84,12 +87,28 @@ void MBO::initParam(){
     matrix_t zeroMatrix  = matrix_t::Zero(info_.actuatedDofNum, 6);
     selectMatrix << zeroMatrix, I;
 
+    // 初始化碰撞判断阈值
+    th_joint2 = 0;
+    th_joint3 = 0;
+    th_baseX = 0;
+    th_baseY = 0;
+    th_collision = 0;
+    force_isolation = 0;
+
+    // 初始化标志位
+    flag_noise = 0;
+    flag_uncertainty_M = 0;
+    flag_uncertainty_C = 0;
+    flag_uncertainty_G = 0;
+
     ros::NodeHandle nh;
     armTau2hat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/armjoint2" , 1);
     armTau3hat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/armjoint3" , 1);
     baseXhat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/baseX" , 1);
     baseYhat_pub_= nh.advertise<std_msgs::Float64>("/MBOestimation/baseY" , 1);
-    extForcehatAbs_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/extForceAbs_hat" , 1);
+    extForcehatAbs_EE_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/extForceAbs_EE_hat" , 1);
+    extForcehatAbs_base_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/extForceAbs_base_hat" , 1);
+    force_isolation_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/force_isolation" , 1);
     //extForceAbs_pub_ = nh.advertise<std_msgs::Float64>("/MBOestimation/extForceAbs_true" , 1);
 }
 
@@ -103,6 +122,11 @@ void MBO::dynamicCallback(qm_force_observer::ObserverConfig &config, uint32_t) {
     Ko_leg = config.MBO_leg;
     Ko_arm = config.MBO_arm;
     setParam(Ko_ang, Ko_lin, Ko_leg, Ko_arm);
+
+    flag_noise = config.MBO_noise_flag;
+    flag_uncertainty_M = config.MBO_uncertainty_M_flag;
+    flag_uncertainty_C = config.MBO_uncertainty_C_flag;
+    flag_uncertainty_G = config.MBO_uncertainty_G_flag;
     ROS_INFO_STREAM("\033[32m Update the MBO Force Observer Param. \033[0m");
 }
 
@@ -113,6 +137,7 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
 
     qMeasured_.setZero();
     vMeasured_.setZero();
+    vMeasured_noise.setZero();
 
     qMeasured_.head<3>() = rbdStateMeasured.segment<3>(3);
     qMeasured_.segment<3>(3) = rbdStateMeasured.head<3>();  // base欧拉角  
@@ -155,6 +180,12 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     // 求arm_j_的伪逆
     Arm_J_PseudoInverse = (arm_j_.transpose()).completeOrthogonalDecomposition().pseudoInverse();
 
+    // 得到base的雅可比矩阵
+    base_j_.setZero();
+    base_dj_.setZero(); // must
+    pinocchio::getFrameJacobian(model, data, model.getBodyId("base"), pinocchio::LOCAL_WORLD_ALIGNED, base_j_);
+    pinocchio::getFrameJacobianTimeVariation(model, data, model.getBodyId("base"), pinocchio::LOCAL_WORLD_ALIGNED, base_dj_);
+
     // 得到足端的雅可比矩阵
     j_ = matrix_t(3 * info_.numThreeDofContacts, info_.generalizedCoordinatesNum);
     for (size_t i = 0; i < info_.numThreeDofContacts; ++i) {
@@ -164,7 +195,7 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
         j_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();     //取jac的线速度部分
     }
 
-    // ETH论文公式（3）
+    // ETH论文公式（3）  _EE后缀代表施力连杆是机械臂末端，_base后缀代表施加力连杆是base
     matrix_t j_transposed(info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3);
     // 将每个足底的雅可比矩阵转置并平铺
     for (size_t i = 0; i < info_.numThreeDofContacts; ++i) {
@@ -174,17 +205,22 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
         // 平铺到新矩阵中
         j_transposed.block(0, i * 3, info_.generalizedCoordinatesNum, 3) = jac_transposed;
     }
-    matrix_t final_j_transposed(info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3 + 6);
-    final_j_transposed.block(0, 0, info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3) = j_transposed;
-    final_j_transposed.block(0, info_.numThreeDofContacts * 3, info_.generalizedCoordinatesNum, 6) = arm_j_.transpose();
+    // EE部分
+    matrix_t final_j_transposed_EE(info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3 + 6);
+    final_j_transposed_EE.block(0, 0, info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3) = j_transposed;
+    final_j_transposed_EE.block(0, info_.numThreeDofContacts * 3, info_.generalizedCoordinatesNum, 6) = arm_j_.transpose();
+    // base 部分
+    matrix_t final_j_transposed_base(info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3 + 6);
+    final_j_transposed_base.block(0, 0, info_.generalizedCoordinatesNum, info_.numThreeDofContacts * 3) = j_transposed;
+    final_j_transposed_base.block(0, info_.numThreeDofContacts * 3, info_.generalizedCoordinatesNum, 6) = base_j_.transpose();
     // 求拼接后的大转置矩阵的伪逆
-    J_T_PseudoInverse = final_j_transposed.completeOrthogonalDecomposition().pseudoInverse();
+    J_T_PseudoInverse_EE = final_j_transposed_EE.completeOrthogonalDecomposition().pseudoInverse();
+    J_T_PseudoInverse_base = final_j_transposed_base.completeOrthogonalDecomposition().pseudoInverse();
 
-
+    //ROS_INFO_STREAM("\033[32m MBO inverse gotten \033[0m");
 
     matrix_t Jea_T;
     matrix_t Jeb_T;
-    vector6_t force_ext_hat;
     Jea_T = arm_j_.transpose().bottomRows(6);
     Jeb_T = arm_j_.transpose().topRows(6);
     //得到当前当前各关节力矩  refer to 《Collision detection and identification for a legged manipulator》
@@ -210,43 +246,100 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     //rbdState_.segment(2 * generalizedCoordinatesNum_ + 7 + 3, info_.actuatedDofNum) = jointTor;
     // MBO观测器
     T = period;
-    p = M * qMeasured_;  // 实际动量
+    //p = M * vMeasured_;  // 实际动量
+
+    // 根据标志位决定动力学矩阵是否需要包含不确定性
+    //M = M + flag_uncertainty_M * 0.7 * M;
+    M = M + flag_uncertainty_M * 2 * M;
+    C = C + flag_uncertainty_C * 1 * C;
+    G = G + flag_uncertainty_G * 0.2 * G;
+    //ROS_INFO_STREAM("\033[32m MBO M flag" << flag_uncertainty_M << "\033[0m");
+
+    std::random_device rd;  // 随机数种子
+    std::mt19937 gen(rd());  // 使用梅森旋转算法作为随机数生成器
+    std::normal_distribution<> d(0.0, 0.01);  // 均值为0，标准差为0.01的高斯分布
+    for (int i = 0; i < vMeasured_.size(); ++i) {
+        vMeasured_noise[i] = vMeasured_[i] +  d(gen);  // 为每个元素加上噪声
+    }
+    //p = M * vMeasured_noise;  // 实际动量（含有噪声）
+    vMeasured_ = (1-flag_noise) * vMeasured_+ flag_noise * vMeasured_noise;
+    p = M * vMeasured_; // 实际动量
 
     // ROS_INFO_STREAM("\033[32m MBO get actual momentum. \033[0m");
 
-    //p = pinocchio::cholesky::Mv(model, data, qMeasured_); // 利用惯性矩阵的稀疏性性质加速计算动量
-    dot_p_hat =  generalizedTorque + r + C.transpose() * vMeasured_ - G;
+    // p = pinocchio::cholesky::Mv(model, data, qMeasured_); // 利用惯性矩阵的稀疏性性质加速计算动量
+    dot_p_hat = generalizedTorque + r + C.transpose() * vMeasured_ - G;
 
-    //ROS_INFO_STREAM("\033[32m MBO get actual dot_p_hat. \033[0m");
+    // ROS_INFO_STREAM("\033[32m MBO get actual dot_p_hat. \033[0m");
 
     p_hat = p_hat + T * dot_p_hat;
     r = gainMBO * (p - p_hat);
     torque_ext_hat = r;
     
-    // force_ext_hat = Arm_J_PseudoInverse * torque_ext_hat;
-    // norm_force_ext_hat = force_ext_hat.head<3>().norm();
-    // ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat << "\033[0m");
 
     // ETH论文公式（3）
-    hat_ExternalWrenchs = J_T_PseudoInverse * torque_ext_hat;
-    force_ext_hat = hat_ExternalWrenchs.block(info_.numThreeDofContacts * 3, 0, 6, 1);
-    norm_force_ext_hat = force_ext_hat.head<3>().norm();
-    //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat << "\033[0m");
+    // 力施加在EE上的情况
+    hat_ExternalWrenchs_EE = J_T_PseudoInverse_EE * torque_ext_hat;
+    force_ext_hat_EE = hat_ExternalWrenchs_EE.block(info_.numThreeDofContacts * 3, 0, 6, 1);
+    norm_force_ext_hat_EE = force_ext_hat_EE.head<3>().norm();
+    //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat_EE << "\033[0m");
     std_msgs::Float64 absForce_msg1;
-    absForce_msg1.data = norm_force_ext_hat;
-    extForcehatAbs_pub_.publish(absForce_msg1);
+    absForce_msg1.data = norm_force_ext_hat_EE;
+    extForcehatAbs_EE_pub_.publish(absForce_msg1);
 
-    // // groundtruth abs external force
-    // force_ext_true.head(3) = rbdStateMeasured.segment<3>(2 * info_.generalizedCoordinatesNum + 7);
-    // norm_force_ext_true = force_ext_true.head<3>().norm();
-    // std_msgs::Float64 absForce_msg2;
-    // absForce_msg2.data = norm_force_ext_true;
-    // extForceAbs_pub_.publish(absForce_msg2);
+    // 利用计算得到的机械臂末端外力得到base方向上的外力矩
+    base_torque_ext_hat = Jeb_T * force_ext_hat_EE;
+    
+    // 力施加在base上的情况
+    hat_ExternalWrenchs_base = J_T_PseudoInverse_base * torque_ext_hat;
+    force_ext_hat_base = hat_ExternalWrenchs_base.block(info_.numThreeDofContacts * 3, 0, 6, 1);
+    norm_force_ext_hat_base = force_ext_hat_base.head<3>().norm();
+    //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat_base << "\033[0m");
+    std_msgs::Float64 absForce_msg2;
+    absForce_msg2.data = norm_force_ext_hat_base;
+    extForcehatAbs_base_pub_.publish(absForce_msg2);
+    
+    th_joint2 = 0.5;
+    th_joint3 = 0.5;
+    th_baseX = 3;
+    th_baseY = 3;
+    th_collision = 5;
 
-    // 利用计算得到的外力得到base方向上的外力矩
-    base_torque_ext_hat = Jeb_T * force_ext_hat;
 
-    //ROS_INFO_STREAM("\033[32m MBO get torque_ext_hat. \033[0m");
+    // 力施加位置判断（施加在机械臂末端还是base上（为arm的joint力矩设置阈值，阈值设置需要考虑到有噪声的情况），发布消息：EE=1，base = -1）
+    if(norm_force_ext_hat_EE > th_collision || norm_force_ext_hat_base > th_collision)
+    {
+        //发生了碰撞
+
+        // if (torque_ext_hat(19) > th_joint2 || torque_ext_hat(20) > th_joint3)
+        // {
+        //     force_isolation = 1;
+        // }
+        // else if (base_torque_ext_hat(0) > th_baseX || base_torque_ext_hat(0) > th_baseY)
+        // {
+        //     force_isolation = -1;
+        // }
+        // else
+        // {
+        //     force_isolation =0;
+        // }
+        if (torque_ext_hat(19) < th_joint2 && torque_ext_hat(20) < th_joint3 && (base_torque_ext_hat(0) > th_baseX || base_torque_ext_hat(0) > th_baseY))
+        {
+            force_isolation = -1;
+        }
+        else if (torque_ext_hat(19) > th_joint2 || torque_ext_hat(20) > th_joint3)
+        {
+            force_isolation = 1;
+        }
+        else
+        {
+            force_isolation = 0;
+        }
+    }
+    else
+    {
+        force_isolation = 0;
+    }
 
     std_msgs::Float64 tau_msg1;
     tau_msg1.data = torque_ext_hat(19);
@@ -259,15 +352,16 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     std_msgs::Float64 tau_msg3;
     //tau_msg3.data = torque_ext_hat(0);
     tau_msg3.data = base_torque_ext_hat(0);
-
-
     baseXhat_pub_.publish(tau_msg3);
 
     std_msgs::Float64 tau_msg4;
     //tau_msg4.data = torque_ext_hat(1);
     tau_msg4.data = base_torque_ext_hat(1);
-
     baseYhat_pub_.publish(tau_msg4);
+
+    std_msgs::Float64 tau_msg5;
+    tau_msg5.data = force_isolation;
+    force_isolation_pub_.publish(tau_msg5);
 
     return torque_ext_hat;
 }

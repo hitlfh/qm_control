@@ -177,7 +177,8 @@ void CompliantWbc::AdmittanceUpdate(const ocs2::vector_t &rbdStateMeasured, ocs2
     //return tau_addmitance;
 }
 
-vector6_t CompliantWbc::MultiAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp) {
+vector6_t CompliantWbc::MultiAdmittanceUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
     vector6_t tau_feedback, tau_desired,  torque_ext;
     vector2_t torque_ext23;
     vector2_t tau_adm_joint23;
@@ -187,7 +188,11 @@ vector6_t CompliantWbc::MultiAdmittanceUpdate(const vector_t& rbdStateMeasured, 
     tau_admittance.setZero();
     torque_ext.setZero();
 
-    torque_ext = getExternalArmTorque();
+    // 通过力传感器得到的机械臂外力矩
+    //torque_ext = getExternalArmTorque();
+    //通过观测器估计到的机械臂外力矩
+    torque_ext = STA_tau_ext.block(18, 0, 6, 1);
+
     torque_ext23 = torque_ext.block(1, 0, 2, 1);
     //tau_feedback = rbdStateMeasured.tail(6);
     //tau_desired = imp.tail(6);
@@ -308,7 +313,8 @@ vector6_t CompliantWbc::MultiAdmittanceUpdate(const vector_t& rbdStateMeasured, 
     //tau_addmitance[2] = tmp[1];
 */
 }
-vector6_t CompliantWbc::MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp) {
+vector6_t CompliantWbc::MultiBoundedAdmittanceUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
     vector6_t tau_feedback, tau_desired,  torque_ext;
     vector2_t torque_ext23;
     vector2_t tau_adm_joint23;
@@ -317,8 +323,10 @@ vector6_t CompliantWbc::MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMea
     tau_desired.setZero();
     tau_admittance.setZero();
     torque_ext.setZero();
-    // 通过雅可比矩阵转置乘上力得到外力矩
+    // 通过雅可比矩阵转置乘上末端力传感器得到的力得到外力矩
     torque_ext = getExternalArmTorque();
+    //通过观测器估计得到外力矩
+    // torque_ext = STA_tau_ext.block(18, 0, 6, 1);
     torque_ext23 = torque_ext.block(1, 0, 2, 1);
 
     // 通过动量观测器估计外力矩
@@ -345,22 +353,22 @@ vector6_t CompliantWbc::MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMea
     vector2_t torque_desired(0.0, 0.0);
     vector2_t torque_feedback(0.0, 0.0);
    
-    // 得到2、3关节的粗略惯性项
-    matrix2_t M_a = getArmInertiaTerm();
-    matrix2_t C_a = getArmCoriolisTerm();
-    vector6_t n_a = getArmNonlinearTerm();
-    vector2_t n_arm23 = n_a.segment<2>(1);
+    // // 得到2、3关节的粗略惯性项
+    // matrix2_t M_a = getArmInertiaTerm();
+    // matrix2_t C_a = getArmCoriolisTerm();
+    // vector6_t n_a = getArmNonlinearTerm();
+    //vector2_t n_arm23 = n_a.segment<2>(1);
 
-    // matrix2_t M_a;
-    // M_a.setZero();
-    // M_a(0, 0) = MultiBA_M1_;  // 设置左上角元素
-    // M_a(1, 1) = MultiBA_M2_;  // 设置右下角元素
+    matrix2_t M_a;
+    M_a.setZero();
+    M_a(0, 0) = MultiBA_M1_;  // 设置左上角元素
+    M_a(1, 1) = MultiBA_M2_;  // 设置右下角元素
 
-    // vector2_t n_a(-8.71, 3.98);
-    // matrix2_t C_a;
-    // C_a.setZero();
-    // C_a(0, 0) = MultiBA_C1_;  // 设置左上角元素
-    // C_a(1, 1) = MultiBA_C2_;  // 设置右下角元素
+    vector2_t n_a(-8.71, 3.98);
+    matrix2_t C_a;
+    C_a.setZero();
+    C_a(0, 0) = MultiBA_C1_;  // 设置左上角元素
+    C_a(1, 1) = MultiBA_C2_;  // 设置右下角元素
 
     // 设置控制器的PD项
     matrix2_t Kp;
@@ -500,7 +508,8 @@ vector6_t CompliantWbc::BaseBoundedAdmittanceUpdate(const ocs2::vector_t &rbdSta
 }
 
 // Base XY方向多维集值导纳
-vector6_t CompliantWbc::BaseBAMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z){
+vector6_t CompliantWbc::BaseBAMultiDimUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
 
     vector6_t tau_feedback, tau_desired,  torque_ext;
     vector2_t torque_extXY;
@@ -511,7 +520,12 @@ vector6_t CompliantWbc::BaseBAMultiDimUpdate(const vector_t& rbdStateMeasured, s
     tau_admittance.setZero();
     torque_ext.setZero();
 
+    // 通过末端力传得到的base部分外力矩
     torque_ext = getExternalBaseTorque();
+
+    // 通过观测器估计得到的base部分外力矩
+    //torque_ext = STA_tau_ext.block(0, 0, 6, 1);
+
     torque_extXY = torque_ext.block(0, 0, 2, 1);
     // get the desired position from the reference
     scalar_t base_xd;
@@ -650,7 +664,8 @@ void CompliantWbc::BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar
 }
 
 //base AdmC
-vector6_t CompliantWbc::BaseAdmCMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z){
+vector6_t CompliantWbc::BaseAdmCMultiDimUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
     vector6_t tau_feedback, tau_desired,  torque_ext;
     vector2_t torque_extXY;
     vector2_t tau_adm_baseXY;
@@ -660,8 +675,12 @@ vector6_t CompliantWbc::BaseAdmCMultiDimUpdate(const vector_t& rbdStateMeasured,
     tau_admittance.setZero();
     torque_ext.setZero();
 
-    torque_ext = getExternalBaseTorque();
-    torque_extXY = torque_ext.block(0, 0, 2, 1);
+    // 从力传感器得到的base部分外力矩
+    //torque_ext = getExternalBaseTorque();
+    // 通过观测器估计得到的base部分外力矩
+    torque_ext = STA_tau_ext.block(0, 0, 6, 1);
+
+    torque_extXY = STA_baseForce_tau_ext.block(0, 0, 2, 1);
     // get the desired position from the reference
     scalar_t base_xd;
     scalar_t base_yd;
@@ -759,7 +778,7 @@ vector6_t CompliantWbc::BaseAdmCMultiDimUpdate(const vector_t& rbdStateMeasured,
     tau_admittance[0] = tau_adm_baseXY[0];
     tau_admittance[1] = tau_adm_baseXY[1];
     return tau_admittance;
-} 
+}
 
 /**
  * @brief 常规多维饱和导纳  
@@ -773,8 +792,9 @@ vector6_t CompliantWbc::BaseAdmCMultiDimUpdate(const vector_t& rbdStateMeasured,
  * @return vector_t 
  */
 
-vector_t CompliantWbc::MultiAdmittanceControl(const ocs2::vector_t &stateDesired, const ocs2::vector_t &inputDesired,
-             const ocs2::vector_t &rbdStateMeasured, size_t mode, ocs2::scalar_t period, ocs2::scalar_t time) {
+vector_t CompliantWbc::MultiAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
+                                              size_t mode, scalar_t period, scalar_t time, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
     // get desire pose and velocity from planner
     vector3_t eeDesiredPosition = WbcBase::getEEPosition();
     vector3_t eeDesiredVelocity = WbcBase::getEEVelocity();
@@ -788,7 +808,7 @@ vector_t CompliantWbc::MultiAdmittanceControl(const ocs2::vector_t &stateDesired
     // arm's bounded admittance with no IMP
     //vector_t ba_tau = BoundedAdmittanceUpdate(rbdStateMeasured, time, period);
     //AdmittanceUpdate(rbdStateMeasured, time, period);
-    vector_t ba_tau = MultiAdmittanceUpdate(rbdStateMeasured, time, period, imp);
+    vector_t ba_tau = MultiAdmittanceUpdate(rbdStateMeasured, time, period, imp, STA_baseForce_tau_ext, STA_tau_ext);
     //重力补偿
     vector6_t G_a = getArmGravityTerm();
     vector6_t nle_a = getArmNonlinearTerm();
@@ -828,7 +848,7 @@ vector_t CompliantWbc::MultiAdmittanceControl(const ocs2::vector_t &stateDesired
     BaseYforce_pub.publish(baseYforce_msg);
     BaseZforce_pub.publish(baseZforce_msg);
     //vector_t tau_cmd = BaseBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp, force_z);
-    vector_t Base_tau_cmd = BaseAdmCMultiDimUpdate(rbdStateMeasured, time, period, imp, force_z).topRows(2);
+    vector_t Base_tau_cmd = BaseAdmCMultiDimUpdate(rbdStateMeasured, time, period, imp, force_z, STA_baseForce_tau_ext, STA_tau_ext).topRows(2);
     vector_t proxy_x = Base_AdmC_controller_->getBaseXProxyState();  
     vector_t proxy_y = Base_AdmC_controller_->getBaseYProxyState();
     //vector_t proxy_x = bounded_admittance_controller_base_x_->getProxyState();    // 多维暂时先对base采用先阻抗后导纳，然后只跟踪proxy
@@ -870,8 +890,9 @@ vector_t CompliantWbc::MultiAdmittanceControl(const ocs2::vector_t &stateDesired
  * @param time 
  * @return vector_t 
  */
-vector_t CompliantWbc::MultiBoundedAdmittanceControl(const ocs2::vector_t &stateDesired, const ocs2::vector_t &inputDesired,
-             const ocs2::vector_t &rbdStateMeasured, size_t mode, ocs2::scalar_t period, ocs2::scalar_t time) {
+vector_t CompliantWbc::MultiBoundedAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
+                                                     size_t mode, scalar_t period, scalar_t time, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
     // get desire pose and velocity from planner
     vector3_t eeDesiredPosition = WbcBase::getEEPosition();
     vector3_t eeDesiredVelocity = WbcBase::getEEVelocity();
@@ -885,7 +906,7 @@ vector_t CompliantWbc::MultiBoundedAdmittanceControl(const ocs2::vector_t &state
     // arm's bounded admittance with no IMP
     //vector_t ba_tau = BoundedAdmittanceUpdate(rbdStateMeasured, time, period);
     //AdmittanceUpdate(rbdStateMeasured, time, period);
-    vector_t ba_tau = MultiBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp);
+    vector_t ba_tau = MultiBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp, STA_baseForce_tau_ext, STA_tau_ext);
     //重力补偿
     vector6_t G_a = getArmGravityTerm();
     vector6_t nle_a = getArmNonlinearTerm();
@@ -932,7 +953,7 @@ vector_t CompliantWbc::MultiBoundedAdmittanceControl(const ocs2::vector_t &state
     BaseZforce_pub.publish(baseZforce_msg);
     
     //vector_t tau_cmd = BaseBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp, force_z);
-    vector_t Base_tau_cmd = BaseBAMultiDimUpdate(rbdStateMeasured, time, period, imp, force_z).topRows(2);
+    vector_t Base_tau_cmd = BaseBAMultiDimUpdate(rbdStateMeasured, time, period, imp, force_z, STA_baseForce_tau_ext, STA_tau_ext).topRows(2);
     // vector_t Base_tau_cmd = BaseBAMultiDimUpdate(rbdStateMeasured, time, period, imp, force_z);
     vector_t proxy_x = Base_bounded_admittance_controller_->getBaseXProxyState();  
     vector_t proxy_y = Base_bounded_admittance_controller_->getBaseYProxyState();   
@@ -949,14 +970,16 @@ vector_t CompliantWbc::MultiBoundedAdmittanceControl(const ocs2::vector_t &state
     Task taskBaseProxy = formulateBaseXMotionTrackingTask(proxy_x[0], proxy_x[1], proxy_x[2]) + formulateBaseYMotionTrackingTask(proxy_y[0], proxy_y[1], proxy_y[2]);  //proxy_x[0] [1] [2]分别代表proxy的位置 速度 加速度
     //Task taskBaseProxy = formulateBaseXMotionTrackingTask(proxy_x[0], proxy_x[1], proxy_x[2]);
     // Task taskBaseProxy = formulateBaseYMotionTrackingTask(proxy_y[0], proxy_y[1], proxy_y[2]);
-    Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100
-                + formulateEeAngularMotionTrackingTask() + taskBA + taskBaseProxy /*formulateMultiJoint2ProxyTrackingTask(proxy_2[0],proxy_2[1],proxy_2[2])*/ /*+ formulateBaseXYLinearMotionTask()*//*+ formulateXYContactForceTaskWithCompliant(inputDesired, Base_tau_cmd)*/
-                /*+ formulateMultiJoint12ProxyTrackingTask(proxy_1[0],proxy_1[1],proxy_1[2],proxy_2[0],proxy_2[1],proxy_2[2])*/ /*formulateMulitJoint1ProxyTrackingTask(proxy_1[0],proxy_1[1],proxy_1[2])*//*+formulateBaseYLinearMotionTask()*/; 
+    Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100 + formulateEeAngularMotionTrackingTask()  +taskBA + taskBaseProxy + formulateMultiJoint2ProxyTrackingTask(proxy_2[0], proxy_2[1], proxy_2[2]) + formulateMulitJoint1ProxyTrackingTask(proxy_1[0], proxy_1[1], proxy_1[2]);
+
+    // Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100
+    //             + formulateEeAngularMotionTrackingTask() + taskBA + taskBaseProxy /*formulateMultiJoint2ProxyTrackingTask(proxy_2[0],proxy_2[1],proxy_2[2])*/ /*+ formulateBaseXYLinearMotionTask()*//*+ formulateXYContactForceTaskWithCompliant(inputDesired, Base_tau_cmd)*/
+    //             /*+ formulateMultiJoint12ProxyTrackingTask(proxy_1[0],proxy_1[1],proxy_1[2],proxy_2[0],proxy_2[1],proxy_2[2])*/ /*formulateMulitJoint1ProxyTrackingTask(proxy_1[0],proxy_1[1],proxy_1[2])*//*+formulateBaseYLinearMotionTask()*/; 
     // 对Task3增加跟踪proxy的子任务
     // Task task3 = formulateContactForceTask(inputDesired) + formulateMultiJoint12ProxyTrackingTask(proxy_1[0],proxy_1[1],proxy_1[2],proxy_2[0],proxy_2[1],proxy_2[2]);
     //Task task3 = formulateZContactForceTask(inputDesired) + formulateXYContactTorqueTaskWithCompliant(inputDesired, Base_tau_cmd);  // XY 方向进行柔顺，Z方向的足底力跟踪MPC算出来的
     //Task task3 = formulateZContactForceTask(inputDesired) ;  // XY 方向进行柔顺，Z方向的足底力跟踪MPC算出来的
-    Task task3 = formulateZContactForceTask(inputDesired) + formulateXYContactForceTaskWithCompliant(inputDesired, Base_tau_cmd);  // XY 方向进行柔顺，Z方向的足底力跟踪MPC算出来的
+    Task task3 = formulateZContactForceTask(inputDesired) + formulateXYContactForceTaskWithCompliant(inputDesired, Base_tau_cmd); // XY 方向进行柔顺，Z方向的足底力跟踪MPC算出来的
     // Task task3 = formulateContactForceTask(inputDesired);
     HoQp hoQp(task3, std::make_shared<HoQp>(task1, std::make_shared<HoQp>(task0)));
     vector_t x_optimal = hoQp.getSolutions();
@@ -1023,7 +1046,6 @@ vector_t CompliantWbc::MultiBoundedAdmittanceControl(const ocs2::vector_t &state
     //         + formulateXContactForceTaskWithCompliant(inputDesired, tau_cmd);     //这里的tau_cmd是阻抗+导纳算出来的base的x方向的合力
 
 */
-
 }
 
 /**
@@ -1038,7 +1060,8 @@ vector_t CompliantWbc::MultiBoundedAdmittanceControl(const ocs2::vector_t &state
  * @return vector_t 
  */
 vector_t CompliantWbc::MultiBAProxyTrackingControl(const ocs2::vector_t &stateDesired, const ocs2::vector_t &inputDesired,
-             const ocs2::vector_t &rbdStateMeasured, size_t mode, ocs2::scalar_t period, ocs2::scalar_t time) {
+                                                   const ocs2::vector_t &rbdStateMeasured, size_t mode, ocs2::scalar_t period, ocs2::scalar_t time, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext)
+{
     // get desire pose and velocity from planner
     vector3_t eeDesiredPosition = WbcBase::getEEPosition();
     vector3_t eeDesiredVelocity = WbcBase::getEEVelocity();
@@ -1052,7 +1075,7 @@ vector_t CompliantWbc::MultiBAProxyTrackingControl(const ocs2::vector_t &stateDe
     // arm's bounded admittance with no IMP
     //vector_t ba_tau = BoundedAdmittanceUpdate(rbdStateMeasured, time, period);
     //AdmittanceUpdate(rbdStateMeasured, time, period);
-    vector6_t ba_tau = MultiBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp);
+    vector6_t ba_tau = MultiBoundedAdmittanceUpdate(rbdStateMeasured, time, period, imp, STA_baseForce_tau_ext, torque_ext_STA);
     vector6_t ImpArm_tau  = imp.tail(6);
     vector6_t compliant_tau = imp.tail(6);
 
@@ -1179,7 +1202,6 @@ vector_t CompliantWbc::MultiBAProxyTrackingControl(const ocs2::vector_t &stateDe
     //         + formulateXContactForceTaskWithCompliant(inputDesired, tau_cmd);     //这里的tau_cmd是阻抗+导纳算出来的base的x方向的合力
 
 */
-
 }
 
 vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::vector_t &inputDesired,
@@ -1192,6 +1214,10 @@ vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::ve
     torque_ext_MBO = Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
     // STA估计外力矩
     torque_ext_STA = STA_Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
+
+    // STA估计base外力矩（当外力施加到base上时）
+    baseforce_torque_ext_STA = STA_Momentum_observer->getBaseForce_torque_ext_hat();
+
     // 发布测量到的实际外力矩
     vector6_t arm_torque_ext;
     vector2_t arm_torque_ext23;
@@ -1235,8 +1261,8 @@ vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::ve
         //发布tau_cmd
         // std_msgs::Float64 f_msg;
         // f_msg.data = -tau_max_;
-        // torque_pub_.publish(f_msg);  
-        return MultiAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time);
+        // torque_pub_.publish(f_msg);
+        return MultiAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time, baseforce_torque_ext_STA, torque_ext_STA);
     }
 
     if(controller_mode_ == 2)   // 多维集值饱和导纳控制， arm的两个关节采用多维离散化算法，对base采用先阻抗再导纳追踪proxy
@@ -1244,30 +1270,30 @@ vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::ve
         //发布tau_cmd
         // std_msgs::Float64 f_msg;
         // f_msg.data = -tau_max_;
-        // torque_pub_.publish(f_msg);  
-        vector_t torque = MultiBoundedAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time);
+        // torque_pub_.publish(f_msg);
+        vector_t torque = MultiBoundedAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time, baseforce_torque_ext_STA, torque_ext_STA);
         torque = torque.tail(18);
         std_msgs::Float64 torque_msg1,torque_msg2;
         torque_msg1.data = torque[13];
         torque_msg2.data = torque[14];
         Multi_BA_tau_cmd1_pub.publish(torque_msg1);
         Multi_BA_tau_cmd2_pub.publish(torque_msg2);
-        return MultiBoundedAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time);
+        return MultiBoundedAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time, baseforce_torque_ext_STA, torque_ext_STA);
     }
     if(controller_mode_ == 3)   // 饱和导纳控制， arm的两个关节采用多维离散化算法只追踪proxy，对base采用先阻抗再导纳追踪proxy
     {
         //发布tau_cmd
         // std_msgs::Float64 f_msg;
         // f_msg.data = -tau_max_;
-        // torque_pub_.publish(f_msg);  
-        vector_t torque = MultiBoundedAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time);
+        // torque_pub_.publish(f_msg);
+        vector_t torque = MultiBoundedAdmittanceControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time, baseforce_torque_ext_STA, torque_ext_STA);
         torque = torque.tail(18);
         std_msgs::Float64 torque_msg1,torque_msg2;
         torque_msg1.data = torque[13];
         torque_msg2.data = torque[14];
         Multi_BA_tau_cmd1_pub.publish(torque_msg1);
         Multi_BA_tau_cmd2_pub.publish(torque_msg2);
-        return MultiBAProxyTrackingControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time);
+        return MultiBAProxyTrackingControl(stateDesired, inputDesired, rbdStateMeasured, mode, period, time, baseforce_torque_ext_STA, torque_ext_STA);
     }
     throw std::runtime_error("Update function: No matching condition, returning error.");
 

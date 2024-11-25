@@ -132,6 +132,7 @@ void QMController::starting(const ros::Time &time) {
 }
 
 void QMController::update(const ros::Time &time, const ros::Duration &period) {
+    //ROS_INFO_STREAM("\033[32m period:"<< period << "\033[0m");
 
     // State Estimate
     updateStateEstimation(time, period);

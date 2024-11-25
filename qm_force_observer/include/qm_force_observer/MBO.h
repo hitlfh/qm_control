@@ -7,6 +7,7 @@
 
 #include <ros/ros.h>
 #include <iostream>
+#include <random>
 #include <ocs2_core/Types.h>
 #include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
 #include <ocs2_centroidal_model/PinocchioCentroidalDynamics.h>
@@ -45,12 +46,29 @@ private:
     size_t generalizedCoordinatesNum_;
     size_t actuatedDofNum_;
 
-    vector_t qMeasured_, vMeasured_;
+    vector_t qMeasured_, vMeasured_, vMeasured_noise;
     matrix_t arm_j_, arm_dj_;   // 机械臂末端雅可比矩阵
     matrix_t j_, dj_;  // 足端雅可比矩阵
+    matrix_t base_j_, base_dj_; // base 雅可比矩阵
     matrix_t Arm_J_PseudoInverse;  // 机械臂末端雅可比矩阵的伪逆 
-    matrix_t J_T_PseudoInverse;  // ETH论文中拼接后大转置矩阵的伪逆
-    vector_t hat_ExternalWrenchs;
+    matrix_t J_T_PseudoInverse_EE;  // ETH论文中拼接后大转置矩阵的伪逆
+    matrix_t J_T_PseudoInverse_base;
+    vector_t hat_ExternalWrenchs_EE;
+    vector_t hat_ExternalWrenchs_base;
+
+    // 判断碰撞发生位置
+    double th_joint2;    // 判断机械臂joint2是否发生碰撞的阈值
+    double th_joint3;    // 判断机械臂joint3是否发生碰撞的阈值
+    double th_baseX;     
+    double th_baseY;
+    double th_collision;  // 判断是否发生了碰撞
+    double force_isolation; //1 代表碰撞发生在机械臂末端，-1代表发生在base上, 0代表未发生碰撞
+
+    // 标志位 ：是否含有噪声以及模型不确定性
+    int flag_noise ;
+    int flag_uncertainty_M;
+    int flag_uncertainty_C;
+    int flag_uncertainty_G;
 
     matrix_t M;
     matrix_t C;
@@ -67,9 +85,11 @@ private:
     vector_t r;
     vector_t torque_ext_hat;
     vector_t base_torque_ext_hat;
-    vector_t force_ext_hat;
+    vector_t force_ext_hat_EE;
+    vector_t force_ext_hat_base;
     //vector_t force_ext_true;
-    scalar_t norm_force_ext_hat;
+    scalar_t norm_force_ext_hat_EE;
+    scalar_t norm_force_ext_hat_base;
     //scalar_t norm_force_ext_true;
     vector_t dot_r;  
     
@@ -83,8 +103,10 @@ private:
     ros::Publisher armTau3hat_pub_;
     ros::Publisher baseXhat_pub_;
     ros::Publisher baseYhat_pub_;
-    ros::Publisher extForcehatAbs_pub_;
+    ros::Publisher extForcehatAbs_EE_pub_;
+    ros::Publisher extForcehatAbs_base_pub_;
     ros::Publisher extForceAbs_pub_;
+    ros::Publisher force_isolation_pub_;
 
     scalar_t T;
 

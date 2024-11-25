@@ -57,6 +57,32 @@ void BoundedAdmittanceMultiDim::initParam() {
     init_flag_ = false;
     tau_flag_ = false;
     param_flag_ = false;
+
+    // 两个单维PID初始化
+    q0_j1 =0; q0_j2=0;
+    dot_q0_j1=0; dot_q0_j2=0;
+    ddot_q0_j1=0; ddot_q0_j2=0;
+    Khat_j1=0; Khat_j2=0;
+    Mat1_j1=0; Mat1_j2=0;
+    Mat2_j1=0; Mat2_j2=0;
+    ux_j1=0; ux_j2=0;
+    ux_pre_j1=0; ux_pre_j2=0;
+    ux_star_j1=0; ux_star_j2=0;
+    qx_star_j1=0; qx_star_j2=0;
+    q1_star_j1=0; q1_star_j2=0;
+    qx_j1=0; qx_j2=0;
+    qx_pre_j1=0; qx_pre_j2=0;
+    q_j1=0; q_j2=0;
+    q_pre_j1=0; q_pre_j2=0;
+    phi_a_j1=0; phi_a_j2=0;
+    phi_b_j1=0; phi_b_j2=0;
+    tau_star_j1=0; tau_star_j2=0;
+    tau_j1=0; tau_j2=0;
+    a_j1=0; a_j2=0;
+    ax_j1=0; ax_j2=0;
+    a_pre_j1=0; a_pre_j2=0;
+
+    print_counter_ = 0;
 }
 
 
@@ -101,9 +127,15 @@ void BoundedAdmittanceMultiDim::setPIDControllerParam(matrix2_t M, matrix2_t K, 
     L_pid = L;
 }
 void BoundedAdmittanceMultiDim::setDesired(vector2_t ddot_q0_, vector2_t dot_q0_, vector2_t q0_) {
-    ddot_q0 = ddot_q0;
-    dot_q0 = dot_q0;
+    ddot_q0 = ddot_q0_;
+    dot_q0 = dot_q0_;
     q0 = q0_;
+    ddot_q0_j1 = ddot_q0_(0);
+    dot_q0_j1 = dot_q0_(0);
+    q0_j1 = q0_(0);
+    ddot_q0_j2 = ddot_q0_(1);
+    dot_q0_j2 = dot_q0_(1);
+    q0_j2 = q0_(1);
     //multi
 }
 
@@ -121,6 +153,27 @@ vector2_t BoundedAdmittanceMultiDim::projectionFunction(const vector2_t& tau) {
     return x;
     //multi
 }
+
+// 两个单维投影函数
+scalar_t BoundedAdmittanceMultiDim::projectionFunction_j1(scalar_t x)
+{
+    if (almost_ge(x, tau_max[0]))
+        x = tau_max[0];
+    if (almost_le(x, -tau_max[0]))
+        x = -tau_max[0];
+    return x;
+}
+
+scalar_t BoundedAdmittanceMultiDim::projectionFunction_j2(scalar_t x)
+{
+    if (almost_ge(x, tau_max[1]))
+        x = tau_max[1];
+    if (almost_le(x, -tau_max[1]))
+        x = -tau_max[1];
+    return x;
+}
+
+
 
 vector_t BoundedAdmittanceMultiDim::getJoint1ProxyState() {
     vector_t state(3); // qx, qx_dot, qx_ddot
@@ -171,7 +224,7 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
         Multi_gravity1_pub_ = nh.advertise<std_msgs::Float64>("/BoundedAdmittanceMultiDim/gravity_1", 1);
         Multi_gravity2_pub_ = nh.advertise<std_msgs::Float64>("/BoundedAdmittanceMultiDim/gravity_2", 1);
 
-
+        //多维
         qx = joint_pos;
         qx_pre = joint_pos;
         q = joint_pos;
@@ -179,12 +232,30 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
 
         ux = joint_vel;
         ux_pre = joint_vel;
+
+        // 两个单维
+        qx_j1 = joint_pos(0);
+        qx_j2 = joint_pos(2);
+        qx_pre_j1 = joint_pos(0);
+        qx_pre_j2 = joint_pos(1);
+        q_j1 = joint_pos(0);
+        q_j2 = joint_pos(1);
+        q_pre_j1 = joint_pos(0);
+        q_pre_j2 = joint_pos(1);
+
+        ux_j1 = joint_vel(0);
+        ux_j2 = joint_vel(1);
+        ux_pre_j1 = joint_vel(0);
+        ux_pre_j2 = joint_vel(1);
     }
 
-    T_ = period;
+    //T_ = period;
+    T_ = 0.002;
     // T_ = 0.001;   // 控制频率也对实际控制器表现有较大影响
     q = joint_pos;   
 
+    q_j1 = joint_pos(0);
+    q_j2 = joint_pos(1);
 
     // intermediate param
     //老师控制器的中间变量(标量参数版本)
@@ -199,6 +270,16 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
     K =  (K_1 * Eigen::Matrix2d::Identity() + C)*Lambda;
     Khat = B_hat / T_  + K;
     
+    // // // 打印矩阵（调试用）
+    // std::cout << "B Matrix:" << std::endl;
+    // std::cout<< B <<std::endl;
+    // std::cout << "B_hat Matrix:" << std::endl;
+    // std::cout << B_hat << std::endl;
+    // std::cout << "K Matrix:" << std::endl;
+    // std::cout << K << std::endl;
+    // std::cout << "K_hat Matrix:" << std::endl;
+    // std::cout << Khat << std::endl;
+
     // //修改控制器的中间变量
     // B = Kd_;
     // B_hat = B + C;
@@ -223,6 +304,8 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
     // ux = (qx - qx_pre) / T_;  // (7j)
     // ax = (ux - ux_pre) / T_;
 
+
+
     //第二版PDF推导
     ux_star = ((Mx + Dx * T_+ Kx * T_*T_).partialPivLu().inverse())*(Mx * ux_pre + Mx * qx_pre / T_ + Dx * qx_pre + T_ * (Mx * ddot_q0 + Dx * dot_q0 + Kx * q0 + tau_ext));  // 2.27
     qx_star = T_ * ux_star; // 2.28
@@ -231,10 +314,37 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
     q1_star = q + ((M / (T_ * T_) + Khat).partialPivLu().inverse()) * (phi_b - phi_a); // 2.31
     tau_star = (M / (T_ * T_) + Khat) * (qx_star - q1_star);  // 2.32
     tau = projectionFunction(tau_star); // 2.33
-    qx = q1_star + (M / (T_ * T_) + Khat).partialPivLu().inverse() * tau; //2.34
+    qx = q1_star + ((M / (T_ * T_) + Khat).partialPivLu().inverse()) * tau; //2.34
     ux = (qx - qx_pre) / T_;  // 2.35
     ax = (ux - ux_pre) / T_;
-    
+
+    // std::cout << "2.31 inv matirx" << std::endl;
+    // std::cout << (M / (T_ * T_) + Khat).partialPivLu().inverse() <<std::endl;
+
+    if (print_counter_ % 500 == 0)
+    {
+        std::cout << "qx:" << std::endl;
+        std::cout << qx << std::endl;
+        std::cout << "qx_star:" << std::endl;
+        std::cout << qx_star << std::endl;
+        std::cout << "q1_star:" << std::endl;
+        std::cout << q1_star << std::endl;
+        std::cout << "phi_a:" << std::endl;
+        std::cout << phi_a << std::endl;
+        std::cout << "phi_b:" << std::endl;
+        std::cout << phi_b << std::endl;
+        std::cout << "tau_star:" << std::endl;
+        std::cout << tau_star << std::endl;
+        std::cout << "G:" << std::endl;
+        std::cout << G << std::endl;
+        std::cout << "intermediate matrxi:" << std::endl;
+        std::cout << M / (T_ * T_) + Khat << std::endl;
+        std::cout << "qx_star-q1_star:" << std::endl;
+        std::cout << qx_star - q1_star << std::endl;
+    }
+
+    print_counter_++; // 递增计数器
+
     //把 lambda和k1换成矩阵的离散化
     
     //update
@@ -243,27 +353,96 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
     q_pre = q;
 
 
-/**************************************************PID控制器版本***********************************************/ 
-/*
-    Khat = K_pid + B_pid / T_ + L_pid * T_;
-    Mat_1 = matrix2_t::Identity() + (Mx + Dx * T_).inverse() * Kx * (T_ * T_);
-    Mat_2 = M_pid / (T_ * T_) + Khat;
-    ux_star = ((Mx + Dx * T_).inverse()) * (Mx * ux_pre + T_ * (Mx * ddot_q0 + Dx * dot_q0 + Kx * q0 + tau_ext));
-    qx_star = qx_pre + T_ * ux_star; 
-    phi_b =  B_pid * (qx_pre -  q_pre) / T_ - L_pid * a_pre;
-    phi_a = M_pid * (q - qx_pre - T_ * ux_pre) / (T_ * T_);
-    q1_star = q + ((M_pid / (T_ * T_) + Khat).partialPivLu().inverse()) * (phi_b - phi_a);
-    tau_star = Mat_2 * Mat_1.partialPivLu().inverse() * qx_star - Mat_2 * q1_star;
-    tau = projectionFunction(tau_star);
-    qx = q1_star + Mat_2.partialPivLu().inverse() * tau;
-    ux = (qx - qx_pre) / T_;
-    a = a_pre + T_ * (qx - q);
+// /**************************************************PID控制器版本（多维）***********************************************/ 
 
-    qx_pre = qx;
-    ux_pre = ux;
-    q_pre = q;
-    a_pre = a;
-*/
+//     Khat = K_pid + B_pid / T_ + L_pid * T_;
+//     Mat_1 = matrix2_t::Identity() + (Mx + Dx * T_).inverse() * Kx * (T_ * T_);
+//     Mat_2 = M_pid / (T_ * T_) + Khat;
+//     ux_star = ((Mx + Dx * T_).inverse()) * (Mx * ux_pre + T_ * (Mx * ddot_q0 + Dx * dot_q0 + Kx * q0 + tau_ext));
+//     qx_star = qx_pre + T_ * ux_star; 
+//     phi_b =  B_pid * (qx_pre -  q_pre) / T_ - L_pid * a_pre;
+//     phi_a = M_pid * (q - qx_pre - T_ * ux_pre) / (T_ * T_);
+//     q1_star = q + ((M_pid / (T_ * T_) + Khat).partialPivLu().inverse()) * (phi_b - phi_a);
+//     tau_star = Mat_2 * Mat_1.partialPivLu().inverse() * qx_star - Mat_2 * q1_star;
+//     tau = projectionFunction(tau_star);
+//     qx = q1_star + Mat_2.partialPivLu().inverse() * tau;
+//     ux = (qx - qx_pre) / T_;
+//     a = a_pre + T_ * (qx - q);
+
+//     qx_pre = qx;
+//     ux_pre = ux;
+//     q_pre = q;
+//     a_pre = a;
+
+    // /**************************************************PID控制器版本（两个单维）***********************************************/
+    // // joint2 
+    // Khat_j1 = K_pid(0,0) + B_pid(0, 0)/T_ + L_pid(0, 0)*T_;
+    // Mat1_j1 = 1 + Kx(0,0)*T_*T_/ (Mx(0,0) + Dx(0, 0) * T_);
+    // Mat2_j1 = M_pid(0, 0) / (T_ * T_) + Khat_j1;
+    // ux_star_j1 = (Mx(0,0) * ux_pre_j1 + T_ * (Mx(0,0) * ddot_q0_j1+ Dx(0,0) * dot_q0_j1 + Kx(0,0) * q0_j1 + tau_ext(0))) / (Mx(0, 0) + Dx(0, 0) * T_);
+    // qx_star_j1 = qx_pre_j1 + T_ * ux_star_j1;
+    // phi_b_j1 = B_pid(0,0) * (qx_pre_j1 - q_pre_j1) / T_ - L_pid(0,0) * a_pre_j1;
+    // phi_a_j1 = M_pid(0,0) * (q_j1 - qx_pre_j1 - T_ * ux_pre_j1) / (T_ * T_);
+    // q1_star_j1 = q_j1 + (phi_b_j1 - phi_a_j1) / ((M_pid(0,0) / (T_ * T_) + Khat_j1));
+    // tau_star_j1 = (Mat2_j1 / Mat1_j1) * qx_star_j1 - Mat2_j1 * q1_star_j1;
+    // tau_j1 = projectionFunction_j1(tau_star_j1);
+    // qx_j1 = q1_star_j1 + tau_j1 / (Mat2_j1);
+    // ux_j1 = (qx_j1 - qx_pre_j1) / T_;
+    // a_j1 = a_pre_j1 + T_ * (qx_j1 - q_j1);
+    // ax_j1 = (ux_j1 - ux_pre_j1) / T_;
+
+    // ux_pre_j1 = ux_j1;
+    // qx_pre_j1 = qx_j1;
+    // q_pre_j1 = q_j1;
+    // a_pre_j1 = a_j1;
+
+    // // joint3
+    // Khat_j2 = K_pid(1, 1) + B_pid(1, 1) / T_ + L_pid(1, 1) * T_;
+    // Mat1_j2 = 1 + Kx(1, 1) * T_ * T_ / (Mx(1, 1) + Dx(1, 1) * T_);
+    // Mat2_j2 = M_pid(1, 1) / (T_ * T_) + Khat_j2;
+    // ux_star_j2 = (Mx(1, 1) * ux_pre_j2 + T_ * (Mx(1, 1) * ddot_q0_j2 + Dx(1, 1) * dot_q0_j2 + Kx(1, 1) * q0_j2 + tau_ext(1))) / (Mx(1, 1) + Dx(1, 1) * T_);
+    // qx_star_j2 = qx_pre_j2 + T_ * ux_star_j2;
+    // phi_b_j2 = B_pid(1, 1) * (qx_pre_j2 - q_pre_j2) / T_ - L_pid(1, 1) * a_pre_j2;
+    // phi_a_j2 = M_pid(1, 1) * (q_j2 - qx_pre_j2 - T_ * ux_pre_j2) / (T_ * T_);
+    // q1_star_j2 = q_j2 + (phi_b_j2 - phi_a_j2) / ((M_pid(1, 1) / (T_ * T_) + Khat_j2));
+    // tau_star_j2 = (Mat2_j2 / Mat1_j2) * qx_star_j2 - Mat2_j2 * q1_star_j2;
+    // tau_j2 = projectionFunction_j2(tau_star_j2);
+    // qx_j2 = q1_star_j2 + tau_j2 / (Mat2_j2);
+    // ux_j2 = (qx_j2 - qx_pre_j2) / T_;
+    // a_j2 = a_pre_j2 + T_ * (qx_j2 - q_j2);
+    // ax_j2 = (ux_j2 - ux_pre_j2) / T_;
+
+    // ux_pre_j2 = ux_j2;
+    // qx_pre_j2 = qx_j2;
+    // q_pre_j2 = q_j2;
+    // a_pre_j2 = a_j2;
+
+    
+    // tau << tau_j1, tau_j2;
+    // tau_star << tau_star_j1, tau_star_j2;
+    // qx << qx_j1, qx_j2;
+
+    // if (print_counter_ % 500 == 0)
+    // {
+    //     std::cout << "qx_j1:" << std::endl;
+    //     std::cout << qx_j1 << std::endl;
+    //     std::cout << "qx_star_j1:" << std::endl;
+    //     std::cout << qx_star_j1 << std::endl;
+    //     std::cout << "q1_star_j1:" << std::endl;
+    //     std::cout << q1_star_j1 << std::endl;
+    //     std::cout << "phi_a_j1:" << std::endl;
+    //     std::cout << phi_a_j1 << std::endl;
+    //     std::cout << "phi_b_j1:" << std::endl;
+    //     std::cout << phi_b_j1 << std::endl;
+    //     std::cout << "tau_star_j1:" << std::endl;
+    //     std::cout << tau_star_j1 << std::endl;
+    //     std::cout << "qx_star_j1-q1_star_j1:" << std::endl;
+    //     std::cout << qx_star_j1 - q1_star_j1 << std::endl;
+    // }
+
+    // print_counter_++; // 递增计数器
+
+    /******************************************************************************* */
 
     vector2_t tau_cmd;
     tau_cmd = tau;

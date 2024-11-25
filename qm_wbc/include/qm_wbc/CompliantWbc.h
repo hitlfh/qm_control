@@ -58,16 +58,16 @@ private:
     void BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     vector6_t BaseBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,
                                           vector_t imp, scalar_t force_z);      //base x 方向单维度update
-    vector6_t MultiBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp);   // 机械臂多维update（集值算法）
-    vector6_t MultiAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,vector_t imp);   // 机械臂多维update（AdmC）
-    vector6_t BaseBAMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z);  //base多维update(集值算法)
-    vector6_t BaseAdmCMultiDimUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z);  //base多维update（AdmCs）
+    vector6_t MultiBoundedAdmittanceUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext); // 机械臂多维update（集值算法）
+    vector6_t MultiAdmittanceUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext);        // 机械臂多维update（AdmC）
+    vector6_t BaseBAMultiDimUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext);   // base多维update(集值算法)
+    vector6_t BaseAdmCMultiDimUpdate(const vector_t &rbdStateMeasured, scalar_t time, scalar_t period, vector_t imp, scalar_t force_z, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext); // base多维update（AdmCs）
     vector_t MultiAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
-                               size_t mode, scalar_t period, scalar_t time);
+                                    size_t mode, scalar_t period, scalar_t time, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext);
     vector_t MultiBoundedAdmittanceControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
-                               size_t mode, scalar_t period, scalar_t time);   // 多维离散化  机械臂只跟踪多维计算出来的力矩
+                                           size_t mode, scalar_t period, scalar_t time, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext); // 多维离散化  机械臂只跟踪多维计算出来的力矩
     vector_t MultiBAProxyTrackingControl(const vector_t &stateDesired, const vector_t &inputDesired, const vector_t &rbdStateMeasured,
-                               size_t mode, scalar_t period, scalar_t time);   // 多维离散化  机械臂只跟踪多维计算出来的力矩
+                                         size_t mode, scalar_t period, scalar_t time, const vector_t &STA_baseForce_tau_ext, const vector_t &STA_tau_ext); // 多维离散化  机械臂只跟踪多维计算出来的力矩
     // impendance controller
     std::shared_ptr<CartesianImpendance> impendace_controller_;
     //  pure admittance controller
@@ -95,9 +95,9 @@ private:
     vector_t base_torque_ext_MBO;  // base的xy方向估计外力矩
     // STA
     std::shared_ptr<STA> STA_Momentum_observer;
-    vector_t torque_ext_STA; // 总的MBO估计外力矩
+    vector_t torque_ext_STA; // 总的STA估计外力矩
     vector_t arm_torque_ext_STA; // 机械臂的第二三关节估计外力矩
-    vector_t base_torque_ext_STA;  // base的xy方向估计外力矩
+    vector_t baseforce_torque_ext_STA;  // 当外力施加到base时的估计外力矩（base的雅可比转置乘上外力）
 
     std::shared_ptr<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>> dynamic_srv_{};
 

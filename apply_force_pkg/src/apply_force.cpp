@@ -19,7 +19,7 @@ void applyForceInXDirection(const std::string& body_name, double force_magnitude
     srv.request.wrench = wrench;
 
     srv.request.start_time = ros::Time(0);
-    srv.request.duration = ros::Duration(0.1);
+    srv.request.duration = ros::Duration(0.02);
 
     if (client.call(srv)) {
         ROS_INFO("Successfully applied force: %f N in X direction", force_magnitude);
@@ -39,26 +39,41 @@ int main(int argc, char** argv) {
     double current_force = min_force;
     bool increasing = true;
 
-    ros::Rate rate(2);  // 2 Hz update rate
 
+    // while (ros::ok()) {
+    //     applyForceInXDirection(body_name, current_force);
+
+    //     if (increasing) {
+    //         current_force += force_step;
+    //         if (current_force >= max_force) {
+    //             current_force = max_force;
+    //             increasing = false;
+    //         }
+    //     } else {
+    //         current_force -= force_step;
+    //         if (current_force <= min_force) {
+    //             current_force = min_force;
+    //             increasing = true;
+    //         }
+    //     }
+
+    //     rate.sleep();
+    // }
+
+    // 末端施加幅值正弦变化的外力
+    double period = 4.0;  // Period of the sine wave in seconds (4 seconds)
+    ros::Rate rate(50);  // 20 Hz update rate
     while (ros::ok()) {
-        applyForceInXDirection(body_name, current_force);
+        // Get the current time in seconds
+        double current_time = ros::Time::now().toSec();
+        
+        // Calculate the sine of the current time, scaled to the desired amplitude
+        double force_magnitude = max_force * sin(2 * M_PI * current_time / period);
+        
+        // Apply the sine force along the X direction
+        applyForceInXDirection(body_name, force_magnitude);
 
-        if (increasing) {
-            current_force += force_step;
-            if (current_force >= max_force) {
-                current_force = max_force;
-                increasing = false;
-            }
-        } else {
-            current_force -= force_step;
-            if (current_force <= min_force) {
-                current_force = min_force;
-                increasing = true;
-            }
-        }
-
-        rate.sleep();
+        rate.sleep();  // Maintain the desired loop rate (50 Hz)
     }
 
     return 0;

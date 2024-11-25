@@ -31,10 +31,12 @@ public:
     vector_t getJoint2ProxyState();  
 private:
     vector2_t projectionFunction(const vector2_t& x);
+    scalar_t projectionFunction_j1(scalar_t x);
+    scalar_t projectionFunction_j2(scalar_t x);
 
-/* // 一维param
-    ros::Publisher qx_pub_, torque_pub_, tau_pub_, torque_ext_pub_;
-*/
+    /* // 一维param
+        ros::Publisher qx_pub_, torque_pub_, tau_pub_, torque_ext_pub_;
+    */
 
     size_t generalizedCoordinatesNum_{};
     // flag
@@ -58,7 +60,31 @@ private:
     Eigen::Vector2d torque_desired;
     Eigen::Vector2d torque_feedback;
     Eigen::Vector2d tau_ext_temp; //设为0
+    size_t print_counter_;
 
+    //两个单维度的PID
+    scalar_t q0_j1, q0_j2;
+    scalar_t dot_q0_j1, dot_q0_j2;
+    scalar_t ddot_q0_j1, ddot_q0_j2;
+    scalar_t Khat_j1, Khat_j2;
+    scalar_t Mat1_j1, Mat1_j2;
+    scalar_t Mat2_j1, Mat2_j2;
+    scalar_t ux_j1, ux_j2;
+    scalar_t ux_pre_j1, ux_pre_j2;
+    scalar_t ux_star_j1, ux_star_j2;
+    scalar_t qx_star_j1, qx_star_j2;
+    scalar_t q1_star_j1, q1_star_j2;
+    scalar_t qx_j1, qx_j2;
+    scalar_t qx_pre_j1, qx_pre_j2;
+    scalar_t q_j1, q_j2;
+    scalar_t q_pre_j1, q_pre_j2;
+    scalar_t phi_a_j1, phi_a_j2;
+    scalar_t phi_b_j1, phi_b_j2;
+    scalar_t tau_star_j1, tau_star_j2;
+    scalar_t tau_j1, tau_j2;
+    scalar_t a_j1, a_j2;
+    scalar_t ax_j1, ax_j2;
+    scalar_t a_pre_j1, a_pre_j2;
 
     // publisher
     ros::Publisher qx1_pub_, torque1_limit_pub_, tau1_pub_, torque1_ext_pub_;

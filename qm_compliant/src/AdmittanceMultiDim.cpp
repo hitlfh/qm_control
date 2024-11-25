@@ -93,8 +93,8 @@ void AdmittanceMultiDim::setIDControllerParam(matrix2_t M_a,  matrix2_t C_a, vec
 }
 
 void AdmittanceMultiDim::setDesired(vector2_t ddot_q0_, vector2_t dot_q0_, vector2_t q0_) {
-    ddot_q0 = ddot_q0;
-    dot_q0 = dot_q0;
+    ddot_q0 = ddot_q0_;
+    dot_q0 = dot_q0_;
     q0 = q0_;
     //multi
 }

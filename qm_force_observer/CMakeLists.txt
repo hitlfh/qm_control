@@ -99,6 +99,7 @@ pkg_check_modules(pinocchio REQUIRED pinocchio)
 # )
 generate_dynamic_reconfigure_options(
         cfg/observerGain.cfg
+        cfg/STA_observerGain.cfg
 )
 ###################################
 ## catkin specific configuration ##
