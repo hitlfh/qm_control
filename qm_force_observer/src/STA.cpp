@@ -17,6 +17,7 @@
 //#include "qm_compliant/CompliantBase.h"
 #include "qm_force_observer/STA.h"
 #include <std_msgs/Float64.h>
+#include <chrono>  //计时功能头文件
 
 namespace qm{
 using namespace ocs2;
@@ -97,7 +98,17 @@ void STA::initParam(){
     p_hat.setZero();
     dot_p_hat.resize(totalRows);
     dot_p_hat.setZero();
+    torque_ext_hat.resize(totalRows);
     torque_ext_hat.setZero();
+    torque_dis_hat.resize(totalRows);
+    torque_dis_hat.setZero();
+    force_dis_hat_EE.resize(6);
+    force_dis_hat_EE.setZero();
+    force_dis_hat_base.resize(6);
+    force_dis_hat_base.setZero();
+    f_omega = 0.5;
+    omega = 2 * M_PI * f_omega;   // 低通滤波截止频率
+    alpha = std::exp(-omega * 0.001);
     // force_ext_true.resize(6);
     // force_ext_true.setZero();
     Gain_K1.resize(totalRows, totalRows);
@@ -121,7 +132,8 @@ void STA::initParam(){
     th_joint3 = 0;
     th_baseX = 0;
     th_baseY = 0;
-    th_collision = 0;
+    th_collision_ee = 0;
+    th_collision_base = 0;
     force_isolation = 0;
 
     // 初始化标志位
@@ -137,7 +149,11 @@ void STA::initParam(){
     baseYhat_pub_= nh.advertise<std_msgs::Float64>("/STAestimation/baseY" , 1);
     extForcehatAbs_EE_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/extForceAbs_EE_hat" , 1);
     extForcehatAbs_base_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/extForceAbs_base_hat" , 1);
+    disForcehatAbs_EE_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/disForceAbs_EE_hat" , 1);
+    disForcehatAbs_base_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/disForceAbs_base_hat" , 1);
     force_isolation_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/force_isolation", 1);
+    extForcehatAbs_EE_pub_no_LPF = nh.advertise<std_msgs::Float64>("/STAestimation/extForceAbs_EE_hat_no_LPF" , 1);
+    extForcehatAbs_base_pub_no_LPF = nh.advertise<std_msgs::Float64>("/STAestimation/extForceAbs_base_hat_no_LPF" , 1);
 
     tau_ext_baseXhat_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/tau_ext_baseX", 1);
     tau_ext_baseYhat_pub_ = nh.advertise<std_msgs::Float64>("/STAestimation/tau_ext_baseY", 1);  // 发布直接从估计到的外力矩中提取的base外力矩分量
@@ -228,6 +244,8 @@ void STA::dynamicCallback(qm_force_observer::STA_ObserverConfig &config, uint32_
     flag_uncertainty_C = config.STA_uncertainty_C_flag;
     flag_uncertainty_G = config.STA_uncertainty_G_flag;
 
+    f_omega = config.f_omega;
+
     setParam(Angle_K1, Angle_K2, Angle_K3, Angle_K4, Linear_K1, Linear_K2, Linear_K3, Linear_K4, Leg_K1, Leg_K2, Leg_K3, Leg_K4, Arm_K1, Arm_K2, Arm_K3, Arm_K4);
     ROS_INFO_STREAM("\033[32m Update the STA Force Observer Param. \033[0m");
 }
@@ -236,6 +254,8 @@ vector_t STA::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     // 得到四足机械臂当前的测量状态
 
     //ROS_INFO_STREAM("\033[32m STA running. \033[0m");
+    // 开始计时
+    auto start = std::chrono::high_resolution_clock::now();
 
     qMeasured_.setZero();
     vMeasured_.setZero();
@@ -359,6 +379,7 @@ vector_t STA::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     // p_hat = p_hat + T * dot_p_hat;
     // //r = gainMBO * (p - p_hat);
     // torque_ext_hat = r;
+    
 
     // STA 观测器
     dot_r = Gain_K3 * (p - p_hat)/(p - p_hat).norm() + Gain_K4 * (p - p_hat);
@@ -377,33 +398,44 @@ vector_t STA::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     force_ext_hat_EE = hat_ExternalWrenchs_EE.block(info_.numThreeDofContacts * 3, 0, 6, 1);
     norm_force_ext_hat_EE = force_ext_hat_EE.head<3>().norm();
     //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat << "\033[0m");
-    std_msgs::Float64 absForce_msg1;
-    absForce_msg1.data = norm_force_ext_hat_EE;
-    extForcehatAbs_EE_pub_.publish(absForce_msg1);
-
+    
     // 利用计算得到的EE上的外力得到base方向上的外力矩
     base_torque_ext_hat = Jeb_T * force_ext_hat_EE;
+
+    // 结束计时
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // 计算时间差
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    //ROS_INFO_STREAM("STA computation time: " << duration.count() << " us");
 
     // 力施加在base上的情况
     hat_ExternalWrenchs_base = J_T_PseudoInverse_base * torque_ext_hat;
     force_ext_hat_base = hat_ExternalWrenchs_base.block(info_.numThreeDofContacts * 3, 0, 6, 1);
     norm_force_ext_hat_base = force_ext_hat_base.head<3>().norm();
     //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat_base << "\033[0m");
-    std_msgs::Float64 absForce_msg2;
-    absForce_msg2.data = norm_force_ext_hat_base;
-    extForcehatAbs_base_pub_.publish(absForce_msg2);
-
+    
     // 利用计算得到的base上的外力得到base方向上的外力矩
     baseforce_torque_ext_hat = Jb_T * force_ext_hat_base;
+
+    std_msgs::Float64 absForce_msg1;
+    absForce_msg1.data = norm_force_ext_hat_EE;
+    extForcehatAbs_EE_pub_no_LPF.publish(absForce_msg1);
+
+    std_msgs::Float64 absForce_msg2;
+    absForce_msg2.data = norm_force_ext_hat_base;
+    extForcehatAbs_base_pub_no_LPF.publish(absForce_msg2);
+
 
     th_joint2 = 0.5;
     th_joint3 = 0.5;
     th_baseX = 3;
     th_baseY = 3;
-    th_collision = 5;
+    th_collision_ee = 11;  //12
+    th_collision_base = 30;
 
     // 力施加位置判断（施加在机械臂末端还是base上（为arm的joint力矩设置阈值，阈值设置需要考虑到有噪声的情况），发布消息：EE=1，base = -1）
-    if (norm_force_ext_hat_EE > th_collision || norm_force_ext_hat_base > th_collision)
+    if (norm_force_ext_hat_EE > th_collision_ee || norm_force_ext_hat_base > th_collision_base)
     {
         // 发生了碰撞
 
@@ -431,11 +463,70 @@ vector_t STA::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
         {
             force_isolation = 0;
         }
+
+        // 低通滤波处理模型不确定性  (当发生碰撞的时候假设不确定性外力矩不变)
+        force_dis_hat_EE = force_dis_hat_EE;
+        force_dis_hat_base = force_dis_hat_base;
+        torque_dis_hat = torque_dis_hat;
     }
     else
     {
         force_isolation = 0;
+        // 当没发生碰撞的时候对估计的外力矩进行低通滤波，再用估计值减去这个滤波值
+        force_dis_hat_EE = (1-alpha) * force_dis_hat_EE + alpha * force_ext_hat_EE;
+        force_dis_hat_base = (1-alpha) * force_dis_hat_base + alpha * force_ext_hat_base;
+        torque_dis_hat = (1-alpha) * torque_dis_hat + alpha * torque_dis_hat;
     }
+
+    // torque_ext_hat = torque_ext_hat - torque_dis_hat;
+    // // ETH论文公式（3）
+    // // 力施加在EE上的情况
+    // hat_ExternalWrenchs_EE = J_T_PseudoInverse_EE * torque_ext_hat;
+    // force_ext_hat_EE = hat_ExternalWrenchs_EE.block(info_.numThreeDofContacts * 3, 0, 6, 1);
+    // norm_force_ext_hat_EE = force_ext_hat_EE.head<3>().norm();
+    // //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat << "\033[0m");
+    
+    // // 利用计算得到的EE上的外力得到base方向上的外力矩
+    // base_torque_ext_hat = Jeb_T * force_ext_hat_EE;
+    // // 力施加在base上的情况
+    // hat_ExternalWrenchs_base = J_T_PseudoInverse_base * torque_ext_hat;
+    // force_ext_hat_base = hat_ExternalWrenchs_base.block(info_.numThreeDofContacts * 3, 0, 6, 1);
+    // norm_force_ext_hat_base = force_ext_hat_base.head<3>().norm();
+    // //ROS_INFO_STREAM("\033[32m norm of external force:"<< norm_force_ext_hat_base << "\033[0m");
+    
+    // // 利用计算得到的base上的外力得到base方向上的外力矩
+    // baseforce_torque_ext_hat = Jb_T * force_ext_hat_base;
+
+
+
+    force_ext_hat_EE = force_ext_hat_EE - force_dis_hat_EE;
+    norm_force_ext_hat_EE = force_ext_hat_EE.head<3>().norm();
+    force_ext_hat_base = force_ext_hat_base - force_dis_hat_base;
+    norm_force_ext_hat_base = force_ext_hat_base.head<3>().norm();
+    norm_force_dis_hat_EE = force_dis_hat_EE.head<3>().norm();
+    norm_force_dis_hat_base = force_dis_hat_base.head<3>().norm();
+
+
+
+    std_msgs::Float64 absForce_msg3;
+    absForce_msg3.data = norm_force_ext_hat_EE;
+    extForcehatAbs_EE_pub_.publish(absForce_msg3);
+
+    std_msgs::Float64 absForce_msg4;
+    absForce_msg4.data = norm_force_ext_hat_base;
+    extForcehatAbs_base_pub_.publish(absForce_msg4);
+
+    std_msgs::Float64 absForce_msg5;
+    absForce_msg5.data = norm_force_dis_hat_EE;
+    disForcehatAbs_EE_pub_.publish(absForce_msg5);
+
+    std_msgs::Float64 absForce_msg6;
+    absForce_msg6.data = norm_force_dis_hat_base;
+    disForcehatAbs_base_pub_.publish(absForce_msg6);
+
+
+
+
 
     std_msgs::Float64 tau_msg1;
     tau_msg1.data = torque_ext_hat(19);

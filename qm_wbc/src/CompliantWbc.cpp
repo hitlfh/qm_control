@@ -21,6 +21,8 @@ CompliantWbc::CompliantWbc(const ocs2::PinocchioInterface &pinocchioInterface, o
     MBOInit(pinocchioInterface, info, armEeKinematics, controller_nh);
     // init STA
     STAInit(pinocchioInterface, info, armEeKinematics, controller_nh);
+    // init KF
+    KFInit(pinocchioInterface, info, armEeKinematics, controller_nh);
     // init compliant controller
     impendace_controller_ = std::make_shared<CartesianImpendance>(pinocchioInterface, info, armEeKinematics, controller_nh);
     AdmittanceInit(pinocchioInterface, info, armEeKinematics, controller_nh);
@@ -60,6 +62,12 @@ void CompliantWbc::MBOInit(const PinocchioInterface& pinocchioInterface, Centroi
 void CompliantWbc::STAInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh){
     STA_Momentum_observer = std::make_shared<STA>(pinocchioInterface, info, armEeKinematics, controller_nh);
+}
+
+// KF 初始化
+void CompliantWbc::KFInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh){
+    KF_Momentum_observer = std::make_shared<KF>(pinocchioInterface, info, armEeKinematics, controller_nh);
 }
 // 单维度普通无力矩饱和导纳
 void CompliantWbc::AdmittanceInit(const ocs2::PinocchioInterface &pinocchioInterface, ocs2::CentroidalModelInfo info,
@@ -324,9 +332,9 @@ vector6_t CompliantWbc::MultiBoundedAdmittanceUpdate(const vector_t &rbdStateMea
     tau_admittance.setZero();
     torque_ext.setZero();
     // 通过雅可比矩阵转置乘上末端力传感器得到的力得到外力矩
-    torque_ext = getExternalArmTorque();
+    //torque_ext = getExternalArmTorque();
     //通过观测器估计得到外力矩
-    // torque_ext = STA_tau_ext.block(18, 0, 6, 1);
+    torque_ext = STA_tau_ext.block(18, 0, 6, 1);
     torque_ext23 = torque_ext.block(1, 0, 2, 1);
 
     // 通过动量观测器估计外力矩
@@ -521,12 +529,13 @@ vector6_t CompliantWbc::BaseBAMultiDimUpdate(const vector_t &rbdStateMeasured, s
     torque_ext.setZero();
 
     // 通过末端力传得到的base部分外力矩
-    torque_ext = getExternalBaseTorque();
+    //torque_ext = getExternalBaseTorque();
 
     // 通过观测器估计得到的base部分外力矩
-    //torque_ext = STA_tau_ext.block(0, 0, 6, 1);
+    torque_ext = STA_tau_ext.block(0, 0, 6, 1);
 
-    torque_extXY = torque_ext.block(0, 0, 2, 1);
+    //torque_extXY = torque_ext.block(0, 0, 2, 1);
+    torque_extXY = STA_baseForce_tau_ext.block(0, 0, 2, 1);
     // get the desired position from the reference
     scalar_t base_xd;
     scalar_t base_yd;
@@ -970,7 +979,7 @@ vector_t CompliantWbc::MultiBoundedAdmittanceControl(const vector_t &stateDesire
     Task taskBaseProxy = formulateBaseXMotionTrackingTask(proxy_x[0], proxy_x[1], proxy_x[2]) + formulateBaseYMotionTrackingTask(proxy_y[0], proxy_y[1], proxy_y[2]);  //proxy_x[0] [1] [2]分别代表proxy的位置 速度 加速度
     //Task taskBaseProxy = formulateBaseXMotionTrackingTask(proxy_x[0], proxy_x[1], proxy_x[2]);
     // Task taskBaseProxy = formulateBaseYMotionTrackingTask(proxy_y[0], proxy_y[1], proxy_y[2]);
-    Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100 + formulateEeAngularMotionTrackingTask()  +taskBA + taskBaseProxy + formulateMultiJoint2ProxyTrackingTask(proxy_2[0], proxy_2[1], proxy_2[2]) + formulateMulitJoint1ProxyTrackingTask(proxy_1[0], proxy_1[1], proxy_1[2]);
+    Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100 + formulateEeAngularMotionTrackingTask()  +taskBA + taskBaseProxy + formulateBaseXYLinearMotionTask() +   formulateMultiJoint2ProxyTrackingTask(proxy_2[0], proxy_2[1], proxy_2[2]) + formulateMulitJoint1ProxyTrackingTask(proxy_1[0], proxy_1[1], proxy_1[2]);
 
     // Task task1 = formulateBaseHeightMotionTask() + formulateBaseAngularMotionTask() + formulateSwingLegTask() * 100
     //             + formulateEeAngularMotionTrackingTask() + taskBA + taskBaseProxy /*formulateMultiJoint2ProxyTrackingTask(proxy_2[0],proxy_2[1],proxy_2[2])*/ /*+ formulateBaseXYLinearMotionTask()*//*+ formulateXYContactForceTaskWithCompliant(inputDesired, Base_tau_cmd)*/
@@ -1214,6 +1223,10 @@ vector_t CompliantWbc::update(const ocs2::vector_t &stateDesired, const ocs2::ve
     torque_ext_MBO = Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
     // STA估计外力矩
     torque_ext_STA = STA_Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
+    // KF 估计外力矩
+    // counter_++;
+
+    torque_ext_KF = KF_Momentum_observer->getExternalTorque(rbdStateMeasured, time, period);
 
     // STA估计base外力矩（当外力施加到base上时）
     baseforce_torque_ext_STA = STA_Momentum_observer->getBaseForce_torque_ext_hat();

@@ -1,5 +1,5 @@
 //
-// Created by skywoodsz on 2023/4/22.
+// Created by lfh on 2024/10/26.
 //
 
 #include <pinocchio/fwd.hpp>
@@ -17,6 +17,7 @@
 //#include "qm_compliant/CompliantBase.h"
 #include "qm_force_observer/MBO.h"
 #include <std_msgs/Float64.h>
+#include <chrono>  //计时功能头文件
 
 namespace qm{
 using namespace ocs2;
@@ -134,6 +135,9 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     // 得到四足机械臂当前的测量状态
 
     //ROS_INFO_STREAM("\033[32m MBO running. \033[0m");
+    // 开始计时
+    auto start = std::chrono::high_resolution_clock::now();
+
 
     qMeasured_.setZero();
     vMeasured_.setZero();
@@ -298,6 +302,13 @@ vector_t MBO::getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time,
     std_msgs::Float64 absForce_msg2;
     absForce_msg2.data = norm_force_ext_hat_base;
     extForcehatAbs_base_pub_.publish(absForce_msg2);
+
+     // 结束计时
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // 计算时间差
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    //ROS_INFO_STREAM("MBO computation time: " << duration.count() << " us");
     
     th_joint2 = 0.5;
     th_joint3 = 0.5;

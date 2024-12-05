@@ -1,9 +1,9 @@
 //
-// Created by lfh on 2024/10/26.
+// Created by lfh on 2024/11/25.
 //
 
-#ifndef SRC_STA_H
-#define SRC_STA_H
+#ifndef SRC_KF_H
+#define SRC_KF_H
 
 #include <ros/ros.h>
 #include <iostream>
@@ -12,34 +12,29 @@
 #include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
 #include <ocs2_centroidal_model/PinocchioCentroidalDynamics.h>
 #include <dynamic_reconfigure/server.h>
+#include <unsupported/Eigen/MatrixFunctions>
 
 #include <dynamic_reconfigure/server.h>
-#include <qm_force_observer/ObserverConfig.h>
-#include <qm_force_observer/STA_ObserverConfig.h>
+#include <qm_force_observer/Momentum_KFConfig.h>
+#include <Eigen/Sparse>
 
 using vector3_t = Eigen::Matrix<ocs2::scalar_t, 3, 1>;
 using vector6_t = Eigen::Matrix<ocs2::scalar_t, 6, 1>;
 using matrix3_t = Eigen::Matrix<ocs2::scalar_t, 3, 3>;
 using matrix2_t = Eigen::Matrix<ocs2::scalar_t, 2, 2>;
-using matrix6_t = Eigen::Matrix<ocs2::scalar_t, 6, 6>;
-using matrix12_t = Eigen::Matrix<ocs2::scalar_t, 12, 12>;
 using vector2_t = Eigen::Matrix<ocs2::scalar_t, 2, 1>;
 
 
 namespace qm{
 using namespace ocs2;
-class STA{
+class KF{
 
 public:
-    STA(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+    KF(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);
     vector_t getExternalTorque(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
-    void setParam(scalar_t K1_ang, scalar_t K2_ang, scalar_t K3_ang, scalar_t K4_ang,
-                    scalar_t K1_lin, scalar_t K2_lin,scalar_t K3_lin,scalar_t K4_lin,
-                    scalar_t K1_leg, scalar_t K2_leg,scalar_t K3_leg,scalar_t K4_leg,
-                    scalar_t K1_arm, scalar_t K2_arm, scalar_t K3_arm, scalar_t K4_arm);   // 为base的姿态， base的位置， 腿部关节， 机械臂关节分别设置STA观测器增益
+    void setParam(scalar_t QcpAng, scalar_t QcpLin, scalar_t QcpLeg, scalar_t QcpArm, scalar_t Qc_f, scalar_t RcpAng, scalar_t RcpLin, scalar_t RcpLeg, scalar_t RcpArm, scalar_t Af);   
     void initParam();
-    vector_t getBaseForce_torque_ext_hat();
 
 private:
     PinocchioInterface pinocchioInterface_;
@@ -64,16 +59,15 @@ private:
     vector_t hat_ExternalWrenchs_base;
 
     // 判断碰撞发生位置
-    double th_joint2; // 判断机械臂joint2是否发生碰撞的阈值
-    double th_joint3; // 判断机械臂joint3是否发生碰撞的阈值
-    double th_baseX;
+    double th_joint2;    // 判断机械臂joint2是否发生碰撞的阈值
+    double th_joint3;    // 判断机械臂joint3是否发生碰撞的阈值
+    double th_baseX;     
     double th_baseY;
-    double th_collision_ee;    // 判断ee是否发生了碰撞
-    double th_collision_base;    // 判断base是否发生了碰撞
-    double force_isolation; // 1 代表碰撞发生在机械臂末端，-1代表发生在base上, 0代表未发生碰撞
+    double th_collision;  // 判断是否发生了碰撞
+    double force_isolation; //1 代表碰撞发生在机械臂末端，-1代表发生在base上, 0代表未发生碰撞
 
     // 标志位 ：是否含有噪声以及模型不确定性
-    int flag_noise;
+    int flag_noise ;
     int flag_uncertainty_M;
     int flag_uncertainty_C;
     int flag_uncertainty_G;
@@ -90,61 +84,78 @@ private:
     vector_t dot_p; 
     vector_t p_hat;  // 机器人估计动量
     vector_t dot_p_hat;  
-    vector_t r;
     vector_t torque_ext_hat;
-    vector_t torque_dis_hat;  // 模型不确定性引起的扰动力矩
-    vector_t force_dis_hat_EE; // 模型不确定性引起的扰动力
-    vector_t force_dis_hat_base; // 模型不确定性引起的扰动力
-    scalar_t f_omega;
-    scalar_t omega;  //低通滤波截至频率  omega越大（alpha越小）滤波越平滑
-    scalar_t alpha; // 不确定性低通滤波系数  越小对高频噪声去除效果越好
-    vector_t base_torque_ext_hat;  // 力施加到末端力传感器上得出的base部分外力矩分量
+    vector_t base_torque_ext_hat;   // 力施加到末端力传感器上得出的base部分外力矩分量
     vector_t baseforce_torque_ext_hat;  // 力施加到base上得出的base部分外力矩分量
     vector_t force_ext_hat_EE;
     vector_t force_ext_hat_base;
     //vector_t force_ext_true;
     scalar_t norm_force_ext_hat_EE;
     scalar_t norm_force_ext_hat_base;
-    scalar_t norm_force_dis_hat_EE;
-    scalar_t norm_force_dis_hat_base;
     //scalar_t norm_force_ext_true;
-    vector_t dot_r;  
     
-    matrix3_t Angle_K1; //base 姿态的观测器增益
-    matrix3_t Angle_K2;
-    matrix3_t Angle_K3;
-    matrix3_t Angle_K4;
 
-    matrix3_t Linear_K1; //base 位置的观测器增益
-    matrix3_t Linear_K2;
-    matrix3_t Linear_K3;
-    matrix3_t Linear_K4;
+    // KF部分的参数
+    matrix3_t Qcp_ang;  //base 姿态的动量过程噪声协方差矩阵
+    matrix3_t Qcp_Linear;  //base 位置的动量过程噪声协方差矩阵
+    matrix_t Qcp_Leg; //leg的动量过程噪声协方差矩阵
+    matrix_t Qcp_Arm; //arm 动量过程噪声协方差矩阵
+    matrix_t Qcp;
+    matrix_t Qcf;
+    matrix_t Qc;  // 总的过程噪声协方差矩阵
+    matrix3_t Rc_ang;  //base 姿态的动量测量噪声协方差矩阵
+    matrix3_t Rc_Linear;  //base 位置的动量测量噪声协方差矩阵
+    matrix_t Rc_Leg; //leg的动量测量噪声协方差矩阵
+    matrix_t Rc_Arm; //arm 动量测量噪声协方差矩阵
+    matrix_t Rc;  // 总的测量噪声协方差矩阵
+    int dim_p = 24; // 动量的维度
+    int dim_f = 18; // 外力的维度
+    matrix_t A_f;
+    vector_t x_pred;
+    vector_t x_hat_KF;
+    matrix_t P_pred;
+    matrix_t P_KF;
+    vector_t tau_bar;
+    matrix_t K_KF;
 
-    matrix12_t Leg_K1; //leg的观测器增益
-    matrix12_t Leg_K2;
-    matrix12_t Leg_K3;
-    matrix12_t Leg_K4;
+    //连续时间系统矩阵
+    matrix_t Ac;
+    matrix_t Bc;
+    matrix_t Cc;
+    matrix_t mat_zero1;
+    matrix_t mat_zero2;
+    matrix_t mat_zero3;
+    matrix_t mat_zero4;
+    matrix_t mat_zero5;
+    matrix_t mat_indentity1;
+    matrix_t mat_indentity2;
+    matrix_t mat_indentity3;
+    matrix_t mat_indentity4;
 
-    matrix6_t Arm_K1; //arm 姿态的观测器增益
-    matrix6_t Arm_K2;
-    matrix6_t Arm_K3;
-    matrix6_t Arm_K4;
+    //Eigen::SparseMatrix<double> sparseMatrix(rows, cols);
+    // 离散化需要用到的矩阵
+    matrix_t Ad;
+    matrix_t Bd;
+    matrix_t Cd;
+    
+    matrix_t Rd;
+    matrix_t Qd;
 
-    matrix_t Gain_K1;
-    matrix_t Gain_K2;
-    matrix_t Gain_K3;
-    matrix_t Gain_K4;
+    matrix_t Mat_d_1;
+    matrix_t Mat_c_1;
+    matrix_t Mat_d_2;
+    matrix_t Mat_c_2;
+    matrix_t M_11;
+    matrix_t M_12;
+
+    matrix_t H;
 
     ros::Publisher armTau2hat_pub_;
     ros::Publisher armTau3hat_pub_;
-    ros::Publisher baseXhat_pub_;    // 发布力施加在机械臂末端时base的外力矩估计
+    ros::Publisher baseXhat_pub_;
     ros::Publisher baseYhat_pub_;
     ros::Publisher extForcehatAbs_EE_pub_;
-    ros::Publisher extForcehatAbs_EE_pub_no_LPF;  //对估计到的外力没有低通滤波处理的消息发布（用来画图做对比用）
     ros::Publisher extForcehatAbs_base_pub_;
-    ros::Publisher extForcehatAbs_base_pub_no_LPF;  //对估计到的外力没有低通滤波处理的消息发布（用来画图做对比用）
-    ros::Publisher disForcehatAbs_EE_pub_;
-    ros::Publisher disForcehatAbs_base_pub_;
     ros::Publisher extForceAbs_pub_;
     ros::Publisher force_isolation_pub_;
 
@@ -159,12 +170,12 @@ private:
     matrix_t selectMatrix;  // ETH论文中的S矩阵
 
     // 动态传参
-    void dynamicCallback(qm_force_observer::STA_ObserverConfig& config, uint32_t /*level*/);
-    std::shared_ptr<dynamic_reconfigure::Server<qm_force_observer::STA_ObserverConfig>> dynamic_srv_{};
+    void dynamicCallback(qm_force_observer::Momentum_KFConfig& config, uint32_t /*level*/);
+    std::shared_ptr<dynamic_reconfigure::Server<qm_force_observer::Momentum_KFConfig>> dynamic_srv_{};
 
 };
 }
 
 
 
-#endif //SRC_STA_H
+#endif //SRC_KF_H

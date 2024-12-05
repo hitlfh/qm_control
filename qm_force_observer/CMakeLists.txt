@@ -100,6 +100,7 @@ pkg_check_modules(pinocchio REQUIRED pinocchio)
 generate_dynamic_reconfigure_options(
         cfg/observerGain.cfg
         cfg/STA_observerGain.cfg
+        cfg/KF_param.cfg
 )
 ###################################
 ## catkin specific configuration ##
@@ -147,6 +148,7 @@ link_directories(
 add_library(${PROJECT_NAME}
         src/MBO.cpp
         src/STA.cpp
+        src/KF.cpp
         )
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries

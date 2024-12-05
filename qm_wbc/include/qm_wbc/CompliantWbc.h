@@ -17,6 +17,7 @@
 #include <qm_compliant/BaseAdmCMultiDim.h>
 #include "qm_force_observer/MBO.h"
 #include "qm_force_observer/STA.h"
+#include "qm_force_observer/KF.h"
 #include <ocs2_oc/synchronized_module/ReferenceManagerInterface.h>
 
 #include <dynamic_reconfigure/server.h>
@@ -53,7 +54,9 @@ private:
     void MBOInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
                   const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // MBO观测器初始化    
     void STAInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
-                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // STA观测器初始化                                      
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // STA观测器初始化    
+    void KFInit(const PinocchioInterface& pinocchioInterface, CentroidalModelInfo info,
+                  const PinocchioEndEffectorKinematics& armEeKinematics, ros::NodeHandle &controller_nh);    // KF初始化                                  
     void AdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     void BaseAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period);
     vector6_t BaseBoundedAdmittanceUpdate(const vector_t& rbdStateMeasured, scalar_t time, scalar_t period,
@@ -98,6 +101,11 @@ private:
     vector_t torque_ext_STA; // 总的STA估计外力矩
     vector_t arm_torque_ext_STA; // 机械臂的第二三关节估计外力矩
     vector_t baseforce_torque_ext_STA;  // 当外力施加到base时的估计外力矩（base的雅可比转置乘上外力）
+    // KF
+    std::shared_ptr<KF> KF_Momentum_observer;
+    vector_t torque_ext_KF; // 总的KF估计外力矩
+    vector_t arm_torque_ext_KF; // 机械臂的第二三关节估计外力矩
+    vector_t base_torque_ext_KF;  // base的xy方向估计外力矩
 
     std::shared_ptr<dynamic_reconfigure::Server<qm_wbc::CompliantConfig>> dynamic_srv_{};
 
@@ -163,6 +171,7 @@ private:
     size_t begin_{}, end_{};  //切换导纳控制器使能关节
     //柔顺控制模式切换标志位
     size_t controller_mode_;  // 1:pure admittance 2:torque_bounded admittance(老师离散化算法)
+    size_t counter_ = 0; // 计数器变量，初始化为 0
 };
 }
 

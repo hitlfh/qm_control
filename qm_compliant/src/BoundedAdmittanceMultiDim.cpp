@@ -249,8 +249,8 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
         ux_pre_j2 = joint_vel(1);
     }
 
-    //T_ = period;
-    T_ = 0.002;
+    T_ = period;
+    //T_ = 0.002;
     // T_ = 0.001;   // 控制频率也对实际控制器表现有较大影响
     q = joint_pos;   
 
@@ -321,29 +321,29 @@ vector_t BoundedAdmittanceMultiDim::update(const ocs2::vector_t &rbdStateMeasure
     // std::cout << "2.31 inv matirx" << std::endl;
     // std::cout << (M / (T_ * T_) + Khat).partialPivLu().inverse() <<std::endl;
 
-    if (print_counter_ % 500 == 0)
-    {
-        std::cout << "qx:" << std::endl;
-        std::cout << qx << std::endl;
-        std::cout << "qx_star:" << std::endl;
-        std::cout << qx_star << std::endl;
-        std::cout << "q1_star:" << std::endl;
-        std::cout << q1_star << std::endl;
-        std::cout << "phi_a:" << std::endl;
-        std::cout << phi_a << std::endl;
-        std::cout << "phi_b:" << std::endl;
-        std::cout << phi_b << std::endl;
-        std::cout << "tau_star:" << std::endl;
-        std::cout << tau_star << std::endl;
-        std::cout << "G:" << std::endl;
-        std::cout << G << std::endl;
-        std::cout << "intermediate matrxi:" << std::endl;
-        std::cout << M / (T_ * T_) + Khat << std::endl;
-        std::cout << "qx_star-q1_star:" << std::endl;
-        std::cout << qx_star - q1_star << std::endl;
-    }
+    // if (print_counter_ % 500 == 0)
+    // {
+    //     std::cout << "qx:" << std::endl;
+    //     std::cout << qx << std::endl;
+    //     std::cout << "qx_star:" << std::endl;
+    //     std::cout << qx_star << std::endl;
+    //     std::cout << "q1_star:" << std::endl;
+    //     std::cout << q1_star << std::endl;
+    //     std::cout << "phi_a:" << std::endl;
+    //     std::cout << phi_a << std::endl;
+    //     std::cout << "phi_b:" << std::endl;
+    //     std::cout << phi_b << std::endl;
+    //     std::cout << "tau_star:" << std::endl;
+    //     std::cout << tau_star << std::endl;
+    //     std::cout << "G:" << std::endl;
+    //     std::cout << G << std::endl;
+    //     std::cout << "intermediate matrxi:" << std::endl;
+    //     std::cout << M / (T_ * T_) + Khat << std::endl;
+    //     std::cout << "qx_star-q1_star:" << std::endl;
+    //     std::cout << qx_star - q1_star << std::endl;
+    // }
 
-    print_counter_++; // 递增计数器
+    // print_counter_++; // 递增计数器
 
     //把 lambda和k1换成矩阵的离散化
     
