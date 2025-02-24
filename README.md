@@ -17,13 +17,13 @@ The branch introduces a whole-body admittance control framework for quadruped ma
 Launch the simulation with:
 
 ```
-mon launch qm_gazebo empty_world.launch
+roslaunch qm_gazebo empty_world.launch
 ```
 
 Load the controller with:
 
 ```
-mon launch qm_controllers load_controller.launch
+roslaunch qm_controllers load_controller.launch
 ```
 
 Start the controller using `rqt_controller_manager` GUI with:
@@ -35,10 +35,9 @@ rosrun rqt_controller_manager rqt_controller_manager
 After the manipulator is initialized, commands can be sent with: 
 
 ```
-# Don't use mon
 roslaunch qm_controllers load_qm_target.launch 
 # rviz
-mon launch qm_controllers rviz.launch
+roslaunch qm_controllers rviz.launch
 ```
 
 [dynamic_reconfigure](http://wiki.ros.org/dynamic_reconfigure) is set to expose parameters to external reconfiguration, such as the torque limit, friction coefficient, stiffness, damping, and so on.
