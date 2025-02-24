@@ -40,17 +40,19 @@ roslaunch qm_controllers load_qm_target.launch
 roslaunch qm_controllers rviz.launch
 ```
 
-[dynamic_reconfigure](http://wiki.ros.org/dynamic_reconfigure) is set to expose parameters to external reconfiguration, such as the torque limit, friction coefficient, stiffness, damping, and so on.
+[dynamic_reconfigure](http://wiki.ros.org/dynamic_reconfigure) is set to expose parameters to external reconfiguration, such as the torque limit, friction coefficient, stiffness, damping, and so on. Users can switch the control mode. By default, it is in Mode 2, which is the proposed anti - saturation admittance control mode.  Mode 1 is the conventional saturation admittance control mode used for comparison.
 
 ```
 rosrun rqt_reconfigure rqt_reconfigure
 ```
-
-
+Users can use the `rqt_multiplot`  tool to visualize external force estimation results from multiple common observation methods in a single window by subscribing to ROS topics.
+```
+rosrun rqt_multiplot rqt_multiplot
+```
 
 ## External force test
 
--   You can call the service to apply the external force of $[50.0, 0.0, 0.0]^T$ $N$ to the end-effector for 2 seconds.
+-   Users can call the service to apply the external force of $[50.0, 0.0, 0.0]^T$ $N$ to the end-effector for 2 seconds.
 
 ```
 rosservice call /gazebo/apply_body_wrench '{body_name: "qm::ft_sensor", reference_frame: "qm::ft_sensor", wrench: { force: { x: 50.0, y: 0, z: 0 } }, start_time: 0, duration: {secs: 2} }'
