@@ -1,15 +1,15 @@
-# qm_control
+# Observer-based Whole-Body Admittance control
 
 ## Overview
 
-The branch ensures the quadruped manipulator's whole-body compliance under actuation saturation. To be specific, in the case of non-saturation, the controller tracks user-set compliance. In case of saturation, it can avoid unsafe behaviors (e.g., slips, oscillations, and overshoots) caused by actuation saturation.
+The branch introduces a whole-body admittance control framework for quadruped manipulators, utilizing a novel external force observer that estimates forces acting on the manipulator or the quadruped's base without relying on dedicated force sensors.
 
 ## Video
 
 (Click to see)
-[![Watch the video](./docs/cover.jpg)](https://youtu.be/gK7PCxNsuZ8)
+[![Watch the video](./docs/Cover.png)](https://youtu.be/bI-IjsMyc8A)
 
-***Video Links:*** [YouTube](https://youtu.be/gK7PCxNsuZ8), [Bilibili](https://www.bilibili.com/video/BV1dy421e7PZ) (for China).
+***Video Links:*** [YouTube](https://youtu.be/bI-IjsMyc8A).
 
 
 ## Usage
